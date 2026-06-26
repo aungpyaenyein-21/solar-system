@@ -29,6 +29,10 @@
   #cmp-panel .close { position: absolute; top: 16px; right: 20px; cursor: pointer; font-size: 22px; color: #fff; }
   #cmp-panel h2 { color: #fff; font-weight: normal; }
   body.clean #hud, body.clean #panel, body.clean #ctrl, body.clean #info, body.clean #live, body.clean #eclipse { display: none !important; }
+  #cam { position: fixed; right: 8px; bottom: 8px; z-index: 3; display: none; }
+  #cam video { width: 160px; border-radius: 8px 8px 0 0; transform: scaleX(-1); display: block; }
+  #cam #cam-status { background: #111d; color: #ccc; font-size: 11px; text-align: center; padding: 3px 0; border-radius: 0 0 8px 8px; }
+  body.clean #cam { display: none !important; }
 </style>
 <div id="hud">drag = rotate · scroll = zoom · click a body = zoom + info · click empty = back · space = pause · ←/→ = time</div>
 <div id="info"></div>
@@ -44,6 +48,7 @@
   <label><input type="checkbox" id="t-real"> real sizes</label>
   <label><input type="checkbox" id="t-zodiac"> zodiac ring</label>
   <label><input type="checkbox" id="t-probes"> Voyager paths</label>
+  <label><input type="checkbox" id="t-hand"> 🖐 hand control</label>
   <div class="row"><button id="cam-top">top</button><button id="cam-side">side</button><button id="cam-reset">reset</button></div>
   <button id="snd">🔊 sound: off</button>
   <button id="cmp">📐 size compare</button>
@@ -55,6 +60,7 @@
   <span id="datelbl">·</span>
   <input id="dateset" type="date" title="jump to date">
 </div>
+<div id="cam"><video id="cam-video" playsinline muted></video><div id="cam-status">·</div></div>
 <div id="cmp-panel"><span class="close" id="cmp-close">✕</span><h2>Relative sizes (real diameters)</h2><div id="cmp-svg"></div></div>
 <script type="importmap">
 { "imports": {
@@ -419,6 +425,58 @@ const seasonOf = date => {
   return `🌍 北半球: ${s}（直下点 ${lat.toFixed(1)}°）`;
 };
 
+// ---- hand control (webcam + MediaPipe Hands) ----
+let handOn = false, landmarker = null, video = null, handPrev = null;
+const hSph = new THREE.Spherical(160, Math.PI / 3, 0), hv = new THREE.Vector3();
+const setStatus = t => $('cam-status').textContent = t;
+async function initHands() {
+  if (!landmarker) {
+    setStatus('AI 読み込み中…');
+    const { HandLandmarker, FilesetResolver } = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+    const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    landmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: 'GPU' },
+      runningMode: 'VIDEO', numHands: 1 });
+  }
+  if (!video) {
+    setStatus('カメラ起動中…');
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+    video = $('cam-video'); video.srcObject = stream; await video.play();
+    requestAnimationFrame(detectLoop);
+  }
+  setStatus('no hand');
+}
+function detectLoop() {
+  if (handOn && landmarker && video && video.readyState >= 2) {
+    const res = landmarker.detectForVideo(video, performance.now());
+    if (res.landmarks && res.landmarks.length) {
+      const lm = res.landmarks[0];
+      const x = 1 - lm[8].x, y = lm[8].y;                       // index fingertip, mirrored
+      const pinch = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
+      const pinching = pinch < 0.06;
+      if (handPrev) {
+        const dx = x - handPrev.x, dy = y - handPrev.y;
+        if (pinching) hSph.radius = THREE.MathUtils.clamp(hSph.radius * (1 + dy * 4), 18, 700);   // pinch + drag up/down = zoom
+        else { hSph.theta -= dx * 3.2; hSph.phi = THREE.MathUtils.clamp(hSph.phi - dy * 3.2, 0.15, Math.PI - 0.15); }  // open hand = rotate
+      }
+      handPrev = { x, y };
+      setStatus(pinching ? '🤏 zoom' : '✋ rotate');
+    } else { handPrev = null; setStatus('no hand'); }
+  }
+  requestAnimationFrame(detectLoop);
+}
+$('t-hand').onchange = async e => {
+  if (e.target.checked) {
+    e.target.disabled = true; $('cam').style.display = 'block';
+    try {
+      await initHands();
+      controls.target.set(0, 0, 0); hSph.setFromVector3(camera.position.clone());
+      handOn = true; controls.enabled = false;
+    } catch (err) { setStatus('失敗: ' + (err.message || err)); e.target.checked = false; $('cam').style.display = 'none'; }
+    e.target.disabled = false;
+  } else { handOn = false; controls.enabled = true; $('cam').style.display = 'none'; }
+};
+
 // ---- loop ----
 const wpv = new THREE.Vector3(), tmp = new THREE.Vector3(), wantTarget = new THREE.Vector3(), wantCam = new THREE.Vector3();
 const cpos = new THREE.Vector3(), dir = new THREE.Vector3(), pa = new THREE.Vector3(), pb = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), off = new THREE.Vector3();
@@ -481,8 +539,10 @@ function animate() {
     liveEl.style.display = 'block';
   } else liveEl.style.display = 'none';   // hide for sun/moon/comet/none
 
-  // camera: follow / fly-to / overview
-  if (focus && (followOn || flying)) {
+  // camera: hand control overrides everything, else follow / fly-to / overview
+  if (handOn) {
+    hv.setFromSpherical(hSph); camera.position.copy(controls.target).add(hv); camera.lookAt(controls.target);
+  } else if (focus && (followOn || flying)) {
     focus.getWorldPosition(tmp); const r = focus.geometry.parameters.radius;
     wantTarget.copy(tmp); wantCam.copy(tmp).add(off.set(0, r * 3 + 2, r * 7 + 4));
     controls.target.lerp(wantTarget, 0.06); camera.position.lerp(wantCam, 0.06);
@@ -492,7 +552,7 @@ function animate() {
     if (camera.position.distanceTo(homeCam) < 1) flying = false;
   }
 
-  controls.update();
+  if (!handOn) controls.update();
   composer.render();
   labelRenderer.render(scene, camera);
   requestAnimationFrame(animate);
