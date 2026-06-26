@@ -429,9 +429,9 @@ const seasonOf = date => {
 };
 
 // ---- hand control (webcam + MediaPipe Hands) ----
-let handOn = false, landmarker = null, video = null, handPrev = null, handSX = null, handSY = null, pinchState = false, lastDetect = 0;
-let pointPose = false, pointX = 0.5, pointY = 0.5, hoverObj = null, hoverTime = 0;
-const hSph = new THREE.Spherical(160, Math.PI / 3, 0), hTarget = new THREE.Spherical(160, Math.PI / 3, 0), hv = new THREE.Vector3(), _v2 = new THREE.Vector2();
+let handOn = false, landmarker = null, video = null, handPrev = null, handSX = null, handSY = null, lastDetect = 0;
+let pointPose = false, fistPose = false, pointX = 0.5, pointY = 0.5, hoverObj = null, hoverTime = 0, lastHover = null, lockBody = null, prevFist = false, twoPrev = null;
+const hSph = new THREE.Spherical(160, Math.PI / 3, 0), hTarget = new THREE.Spherical(160, Math.PI / 3, 0), hv = new THREE.Vector3(), _v2 = new THREE.Vector2(), ORIGIN = new THREE.Vector3();
 const nameOf = new Map(Object.entries(byName).map(([k, v]) => [v, k]));
 const setStatus = t => $('cam-status').textContent = t;
 async function initHands() {
@@ -441,7 +441,7 @@ async function initHands() {
     const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
     landmarker = await HandLandmarker.createFromOptions(vision, {
       baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: 'GPU' },
-      runningMode: 'VIDEO', numHands: 1 });
+      runningMode: 'VIDEO', numHands: 2 });
   }
   if (!video) {
     setStatus('カメラ起動中…');
@@ -455,25 +455,29 @@ function detectLoop() {
   const now = performance.now();
   if (handOn && landmarker && video && video.readyState >= 2 && now - lastDetect > 33) {   // cap detection ~30fps; render stays 60fps
     lastDetect = now;
-    const res = landmarker.detectForVideo(video, now);
-    if (res.landmarks && res.landmarks.length) {
-      const lm = res.landmarks[0];
-      const x = 1 - lm[8].x, y = lm[8].y;                       // index fingertip, mirrored
-      if (handSX == null) { handSX = x; handSY = y; }           // EMA-smooth the noisy landmark
+    const hands = landmarker.detectForVideo(video, now).landmarks || [];
+    if (hands.length >= 2) {                                   // 🙌 two hands = zoom (spread apart / together)
+      const a = hands[0][9], b = hands[1][9], d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (twoPrev != null) hTarget.radius = THREE.MathUtils.clamp(hTarget.radius * (1 - (d - twoPrev) * 4), 18, 700);
+      twoPrev = d; pointPose = fistPose = false; handPrev = null; setStatus('🙌 zoom');
+    } else if (hands.length === 1) {
+      twoPrev = null;
+      const lm = hands[0], x = 1 - lm[8].x, y = lm[8].y;       // index fingertip, mirrored
+      if (handSX == null) { handSX = x; handSY = y; }          // EMA-smooth the noisy landmark
       else { handSX += (x - handSX) * 0.5; handSY += (y - handSY) * 0.5; }
-      const pinch = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
-      pinchState = pinch < (pinchState ? 0.08 : 0.05);          // hysteresis: no rotate/zoom flicker
       const fext = (t, p) => Math.hypot(lm[t].x - lm[0].x, lm[t].y - lm[0].y) > Math.hypot(lm[p].x - lm[0].x, lm[p].y - lm[0].y);
-      pointPose = fext(8, 6) && !fext(12, 10) && !fext(16, 14) && !fext(20, 18);   // 👉 index extended, others folded
+      const idx = fext(8, 6), mid = fext(12, 10), rng = fext(16, 14), pky = fext(20, 18);
+      pointPose = idx && !mid && !rng && !pky;                 // 👉 index only
+      fistPose = !idx && !mid && !rng && !pky;                 // ✊ all folded
       if (pointPose) { pointX = handSX; pointY = handSY; }
-      else if (handPrev) {
-        const dx = handSX - handPrev.x, dy = handSY - handPrev.y;
-        if (pinchState) hTarget.radius = THREE.MathUtils.clamp(hTarget.radius * (1 + dy * 3.5), 18, 700);   // pinch + drag = zoom
-        else { hTarget.theta -= dx * 2.8; hTarget.phi = THREE.MathUtils.clamp(hTarget.phi - dy * 2.8, 0.15, Math.PI - 0.15); }  // open hand = rotate
-        setStatus(pinchState ? '🤏 zoom' : '✋ rotate');
+      else if (!fistPose && handPrev) {                        // ✋ open hand drag = rotate
+        hTarget.theta -= (handSX - handPrev.x) * 2.8;
+        hTarget.phi = THREE.MathUtils.clamp(hTarget.phi - (handSY - handPrev.y) * 2.8, 0.15, Math.PI - 0.15);
+        setStatus('✋ rotate');
       }
+      if (fistPose) setStatus('✊ grab → jump');
       handPrev = { x: handSX, y: handSY };
-    } else { handPrev = null; handSX = handSY = null; pointPose = false; setStatus('no hand'); }
+    } else { handPrev = null; handSX = handSY = null; twoPrev = null; pointPose = fistPose = false; setStatus('no hand'); }
   }
   requestAnimationFrame(detectLoop);
 }
@@ -483,10 +487,10 @@ $('t-hand').onchange = async e => {
     try {
       await initHands();
       controls.target.set(0, 0, 0); hSph.setFromVector3(camera.position.clone()); hTarget.copy(hSph);
-      handOn = true; controls.enabled = false;
+      handOn = true; controls.enabled = false; lockBody = null; prevFist = false; lastHover = null;
     } catch (err) { setStatus('失敗: ' + (err.message || err)); e.target.checked = false; $('cam').style.display = 'none'; }
     e.target.disabled = false;
-  } else { handOn = false; controls.enabled = true; $('cam').style.display = 'none'; $('hand-cursor').style.display = 'none'; pointPose = false; }
+  } else { handOn = false; controls.enabled = true; $('cam').style.display = 'none'; $('hand-cursor').style.display = 'none'; pointPose = fistPose = false; lockBody = null; prevFist = false; }
 };
 
 // ---- loop ----
@@ -553,22 +557,29 @@ function animate() {
 
   // camera: hand control overrides everything, else follow / fly-to / overview
   if (handOn) {
+    if (lockBody) { lockBody.getWorldPosition(tmp); controls.target.lerp(tmp, 0.1); } else controls.target.lerp(ORIGIN, 0.1);
     hSph.radius += (hTarget.radius - hSph.radius) * 0.12;   // damp toward gesture target -> smooth 60fps motion
     hSph.theta += (hTarget.theta - hSph.theta) * 0.12;
     hSph.phi += (hTarget.phi - hSph.phi) * 0.12;
     hv.setFromSpherical(hSph); camera.position.copy(controls.target).add(hv); camera.lookAt(controls.target);
     const cur = $('hand-cursor');
-    if (pointPose) {                                        // 👉 cursor raycasts; dwell 0.8s on a body selects it
+    if (pointPose) {                                        // 👉 aim: dwell 0.8s shows info only
       cur.style.display = 'block'; cur.style.left = pointX * innerWidth + 'px'; cur.style.top = pointY * innerHeight + 'px';
       ray.setFromCamera(_v2.set(pointX * 2 - 1, 1 - pointY * 2), camera);
       const hit = ray.intersectObjects(focusables, true)[0];
       let o = hit && hit.object; while (o && !focusables.includes(o)) o = o.parent;
+      lastHover = o || null;
       if (o) {
         if (o === hoverObj) { hoverTime += dt; if (hoverTime > 0.8) { setFocus(o); hoverTime = -1; } } else { hoverObj = o; hoverTime = 0; }
         setStatus('👉 ' + nameOf.get(o)); cur.style.borderColor = '#6f6';
         cur.style.transform = `translate(-50%,-50%) scale(${Math.max(0.4, 1 - Math.max(0, hoverTime) / 0.8 * 0.6)})`;
-      } else { hoverObj = null; hoverTime = 0; setStatus('👉 point'); cur.style.borderColor = '#fff'; cur.style.transform = 'translate(-50%,-50%)'; }
+      } else { hoverObj = null; hoverTime = 0; cur.style.borderColor = '#fff'; cur.style.transform = 'translate(-50%,-50%)'; }
     } else { cur.style.display = 'none'; hoverObj = null; hoverTime = 0; }
+    if (fistPose && !prevFist) {                            // ✊ grab = jump-to (fly + lock); empty aim = back to overview
+      if (lastHover) { lockBody = lastHover; hTarget.radius = lastHover.geometry.parameters.radius * 6 + 4; setFocus(lastHover); }
+      else { lockBody = null; hTarget.radius = 160; setFocus(null); }
+    }
+    prevFist = fistPose;
   } else if (focus && (followOn || flying)) {
     focus.getWorldPosition(tmp); const r = focus.geometry.parameters.radius;
     wantTarget.copy(tmp); wantCam.copy(tmp).add(off.set(0, r * 3 + 2, r * 7 + 4));
