@@ -426,8 +426,8 @@ const seasonOf = date => {
 };
 
 // ---- hand control (webcam + MediaPipe Hands) ----
-let handOn = false, landmarker = null, video = null, handPrev = null;
-const hSph = new THREE.Spherical(160, Math.PI / 3, 0), hv = new THREE.Vector3();
+let handOn = false, landmarker = null, video = null, handPrev = null, handSX = null, handSY = null, pinchState = false, lastDetect = 0;
+const hSph = new THREE.Spherical(160, Math.PI / 3, 0), hTarget = new THREE.Spherical(160, Math.PI / 3, 0), hv = new THREE.Vector3();
 const setStatus = t => $('cam-status').textContent = t;
 async function initHands() {
   if (!landmarker) {
@@ -447,21 +447,25 @@ async function initHands() {
   setStatus('no hand');
 }
 function detectLoop() {
-  if (handOn && landmarker && video && video.readyState >= 2) {
-    const res = landmarker.detectForVideo(video, performance.now());
+  const now = performance.now();
+  if (handOn && landmarker && video && video.readyState >= 2 && now - lastDetect > 33) {   // cap detection ~30fps; render stays 60fps
+    lastDetect = now;
+    const res = landmarker.detectForVideo(video, now);
     if (res.landmarks && res.landmarks.length) {
       const lm = res.landmarks[0];
       const x = 1 - lm[8].x, y = lm[8].y;                       // index fingertip, mirrored
+      if (handSX == null) { handSX = x; handSY = y; }           // EMA-smooth the noisy landmark
+      else { handSX += (x - handSX) * 0.5; handSY += (y - handSY) * 0.5; }
       const pinch = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
-      const pinching = pinch < 0.06;
+      pinchState = pinch < (pinchState ? 0.08 : 0.05);          // hysteresis: no rotate/zoom flicker
       if (handPrev) {
-        const dx = x - handPrev.x, dy = y - handPrev.y;
-        if (pinching) hSph.radius = THREE.MathUtils.clamp(hSph.radius * (1 + dy * 4), 18, 700);   // pinch + drag up/down = zoom
-        else { hSph.theta -= dx * 3.2; hSph.phi = THREE.MathUtils.clamp(hSph.phi - dy * 3.2, 0.15, Math.PI - 0.15); }  // open hand = rotate
+        const dx = handSX - handPrev.x, dy = handSY - handPrev.y;
+        if (pinchState) hTarget.radius = THREE.MathUtils.clamp(hTarget.radius * (1 + dy * 3.5), 18, 700);   // pinch + drag = zoom
+        else { hTarget.theta -= dx * 2.8; hTarget.phi = THREE.MathUtils.clamp(hTarget.phi - dy * 2.8, 0.15, Math.PI - 0.15); }  // open hand = rotate
       }
-      handPrev = { x, y };
-      setStatus(pinching ? '🤏 zoom' : '✋ rotate');
-    } else { handPrev = null; setStatus('no hand'); }
+      handPrev = { x: handSX, y: handSY };
+      setStatus(pinchState ? '🤏 zoom' : '✋ rotate');
+    } else { handPrev = null; handSX = handSY = null; setStatus('no hand'); }
   }
   requestAnimationFrame(detectLoop);
 }
@@ -470,7 +474,7 @@ $('t-hand').onchange = async e => {
     e.target.disabled = true; $('cam').style.display = 'block';
     try {
       await initHands();
-      controls.target.set(0, 0, 0); hSph.setFromVector3(camera.position.clone());
+      controls.target.set(0, 0, 0); hSph.setFromVector3(camera.position.clone()); hTarget.copy(hSph);
       handOn = true; controls.enabled = false;
     } catch (err) { setStatus('失敗: ' + (err.message || err)); e.target.checked = false; $('cam').style.display = 'none'; }
     e.target.disabled = false;
@@ -541,6 +545,9 @@ function animate() {
 
   // camera: hand control overrides everything, else follow / fly-to / overview
   if (handOn) {
+    hSph.radius += (hTarget.radius - hSph.radius) * 0.12;   // damp toward gesture target -> smooth 60fps motion
+    hSph.theta += (hTarget.theta - hSph.theta) * 0.12;
+    hSph.phi += (hTarget.phi - hSph.phi) * 0.12;
     hv.setFromSpherical(hSph); camera.position.copy(controls.target).add(hv); camera.lookAt(controls.target);
   } else if (focus && (followOn || flying)) {
     focus.getWorldPosition(tmp); const r = focus.geometry.parameters.radius;
