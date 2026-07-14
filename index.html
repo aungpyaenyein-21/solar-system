@@ -35,10 +35,14 @@
   body.clean #cam { display: none !important; }
   #hand-cursor { position: fixed; width: 26px; height: 26px; border: 2px solid #fff; border-radius: 50%; transform: translate(-50%,-50%); pointer-events: none; z-index: 4; display: none; box-shadow: 0 0 6px #000; }
   body.clean #hand-cursor { display: none !important; }
+  #rhud { position: fixed; top: 40px; left: 8px; background: #111e; padding: 8px 12px; border-radius: 8px; font-size: 13px; line-height: 1.8; display: none; z-index: 4; }
+  #rhud .warn { color: #f66; font-weight: bold; }
+  body.clean #rhud { display: none !important; }
 </style>
 <div id="hud">drag = rotate · scroll = zoom · click a body = zoom + info · click empty = back · space = pause · ←/→ = time</div>
 <div id="info"></div>
 <div id="live"></div>
+<div id="rhud"></div>
 <div id="eclipse"></div>
 <div id="panel">
   <select id="jump"><option value="">— jump to —</option></select>
@@ -54,6 +58,7 @@
   <div class="row"><button id="cam-top">top</button><button id="cam-side">side</button><button id="cam-reset">reset</button></div>
   <button id="snd">🔊 sound: off</button>
   <button id="cmp">📐 size compare</button>
+  <button id="rocket">🚀 rocket mode</button>
 </div>
 <div id="ctrl">
   <button id="pp" title="play / pause">⏸</button>
@@ -411,8 +416,8 @@ $('spd').oninput = e => { dps = +e.target.value; $('spdval').textContent = dps +
 $('dateset').onchange = e => { const ms = Date.parse(e.target.value); if (!isNaN(ms)) simDays = (ms - simStart) / 86400000; };
 addEventListener('keydown', e => {
   if (e.code === 'Space') { paused = !paused; $('pp').textContent = paused ? '▶' : '⏸'; e.preventDefault(); }
-  else if (e.code === 'ArrowRight') simDays += 10;
-  else if (e.code === 'ArrowLeft') simDays -= 10;
+  else if (e.code === 'ArrowRight' && !rocketOn) simDays += 10;
+  else if (e.code === 'ArrowLeft' && !rocketOn) simDays -= 10;
 });
 
 // ambient sound (WebAudio drone, no asset)
@@ -504,6 +509,76 @@ $('t-hand').onchange = async e => {
   } else { handOn = false; controls.enabled = true; $('cam').style.display = 'none'; $('hand-cursor').style.display = 'none'; pointPose = fistPose = false; lockBody = null; prevFist = false; }
 };
 
+// ---- rocket mode (Realistic: Newtonian gravity, thrust, crash + respawn) ----
+// ponytail: planar flight (XZ ecliptic) + fake masses tuned for fun; moons ignored for gravity.
+const MU_SUN = 3000;                                   // scene-unit GM; circular speed at Earth ≈ 10 u/s
+let rocketOn = false, rHead = 0, rDead = 0, savedDps = 1, predHit = false;
+const rPos = new THREE.Vector3(), rVel = new THREE.Vector3(), rFwd = new THREE.Vector3(), rAccV = new THREE.Vector3(), rT = new THREE.Vector3();
+const rpPos = new THREE.Vector3(), rpVel = new THREE.Vector3(), rCamT = new THREE.Vector3(), rLook = new THREE.Vector3();
+const keys = {};
+addEventListener('keydown', e => { keys[e.code] = true;
+  if (rocketOn && (e.code.startsWith('Arrow'))) e.preventDefault();
+  if (rocketOn && e.code === 'Escape') setRocket(false); });
+addEventListener('keyup', e => keys[e.code] = false);
+
+const rocket = new THREE.Group();
+{
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.7, 12), new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.4, metalness: 0.3 }));
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.32, 12), new THREE.MeshStandardMaterial({ color: 0xcc3333, roughness: 0.5 }));
+  nose.position.y = 0.51;
+  const finGeo = new THREE.BoxGeometry(0.04, 0.24, 0.2), finMat = new THREE.MeshStandardMaterial({ color: 0xcc3333 });
+  const f1 = new THREE.Mesh(finGeo, finMat); f1.position.set(0, -0.28, 0.17);
+  const f2 = f1.clone(); f2.position.z = -0.17;
+  body.add(nose, f1, f2);
+  body.rotation.z = -Math.PI / 2;                      // nose points +X, heading rotates the group
+  rocket.add(body);
+}
+const rFlame = new THREE.Sprite(new THREE.SpriteMaterial({ map: flameTex, color: 0xffaa33, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+rFlame.position.x = -0.55; rFlame.visible = false;
+rocket.add(rFlame);
+rocket.visible = false;
+scene.add(rocket);
+const rBoom = new THREE.Sprite(new THREE.SpriteMaterial({ map: flameTex, color: 0xff6622, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+rBoom.visible = false; scene.add(rBoom);
+
+// predicted trajectory (~18 s ahead, planets frozen)
+const PRED = 300, predArr = new Float32Array(PRED * 3);
+const predGeo = new THREE.BufferGeometry(); predGeo.setAttribute('position', new THREE.BufferAttribute(predArr, 3));
+const predLine = new THREE.Line(predGeo, new THREE.LineBasicMaterial({ color: 0x88ffcc, transparent: true, opacity: 0.7 }));
+predLine.visible = false; predLine.frustumCulled = false;
+scene.add(predLine);
+
+const rGravity = (pos, out) => {
+  out.set(0, 0, 0);
+  rT.copy(pos).negate(); out.addScaledVector(rT.normalize(), MU_SUN / Math.max(pos.lengthSq(), 4));
+  for (const p of planets) { rT.copy(p.mesh.position).sub(pos); const d2 = Math.max(rT.lengthSq(), 0.04); out.addScaledVector(rT.normalize(), 10 * p.size * p.size / d2); }
+  return out;
+};
+const rHitBody = pos => {
+  if (pos.length() < 8.6) return true;                 // sun
+  for (const p of planets) if (pos.distanceTo(p.mesh.position) < p.size * p.mesh.scale.x + 0.25) return true;
+  return false;
+};
+const spawnRocket = () => {
+  earth.mesh.getWorldPosition(rPos);
+  const ang = Math.atan2(rPos.z, rPos.x), r = rPos.length() + 3;
+  rPos.set(Math.cos(ang) * r, 0, Math.sin(ang) * r);
+  const v = Math.sqrt(MU_SUN / r);                     // start in a circular sun orbit next to Earth
+  rVel.set(-Math.sin(ang) * v, 0, Math.cos(ang) * v);
+  rHead = Math.atan2(rVel.z, rVel.x);
+  rDead = 0; rocket.visible = true;
+};
+const setRocket = on => {
+  rocketOn = on;
+  rocket.visible = on; predLine.visible = on; rBoom.visible = false;
+  $('rhud').style.display = on ? 'block' : 'none';
+  $('rocket').textContent = on ? '🚀 exit rocket (Esc)' : '🚀 rocket mode';
+  controls.enabled = !on && !handOn;
+  if (on) { savedDps = dps; dps = 0.5; $('spdval').textContent = '0.5 d/s'; $('spd').value = 0; spawnRocket(); setFocus(null); }
+  else { dps = savedDps; $('spdval').textContent = dps + ' d/s'; $('spd').value = dps; flying = true; }
+};
+$('rocket').onclick = () => setRocket(!rocketOn);
+
 // ---- loop ----
 const wpv = new THREE.Vector3(), tmp = new THREE.Vector3(), wantTarget = new THREE.Vector3(), wantCam = new THREE.Vector3();
 const cpos = new THREE.Vector3(), dir = new THREE.Vector3(), pa = new THREE.Vector3(), pb = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), off = new THREE.Vector3();
@@ -567,8 +642,55 @@ function animate() {
     liveEl.style.display = 'block';
   } else liveEl.style.display = 'none';   // hide for sun/moon/comet/none
 
-  // camera: hand control overrides everything, else follow / fly-to / overview
-  if (handOn) {
+  // rocket physics (real seconds, not sim days)
+  if (rocketOn) {
+    if (rDead > 0) {                                   // explosion -> respawn
+      rDead -= dt;
+      rBoom.scale.setScalar((1.2 - rDead) * 8 + 1);
+      rBoom.material.opacity = Math.max(rDead / 1.2, 0);
+      if (rDead <= 0) { rBoom.visible = false; spawnRocket(); }
+    } else {
+      const step = Math.min(dt, 0.05);
+      if (keys['KeyA'] || keys['ArrowLeft']) rHead -= 2.5 * step;
+      if (keys['KeyD'] || keys['ArrowRight']) rHead += 2.5 * step;
+      rFwd.set(Math.cos(rHead), 0, Math.sin(rHead));
+      const thrust = keys['KeyW'] || keys['ArrowUp'], boost = keys['ShiftLeft'] || keys['ShiftRight'];
+      if (thrust) rVel.addScaledVector(rFwd, (boost ? 15 : 6) * step);
+      rVel.addScaledVector(rGravity(rPos, rAccV), step);
+      rPos.addScaledVector(rVel, step);
+      rocket.position.copy(rPos); rocket.rotation.y = -rHead;
+      rFlame.visible = !!thrust;
+      if (thrust) rFlame.scale.setScalar(0.5 + Math.random() * 0.3 + (boost ? 0.5 : 0));
+      if (rHitBody(rPos)) { rDead = 1.2; rocket.visible = false; rBoom.visible = true; rBoom.position.copy(rPos); rBoom.scale.setScalar(1); }
+
+      // predicted path, red when it ends in an impact
+      rpPos.copy(rPos); rpVel.copy(rVel); predHit = false;
+      for (let i = 0; i < PRED; i++) {
+        rpVel.addScaledVector(rGravity(rpPos, rAccV), 0.06);
+        rpPos.addScaledVector(rpVel, 0.06);
+        predArr[i * 3] = rpPos.x; predArr[i * 3 + 1] = rpPos.y; predArr[i * 3 + 2] = rpPos.z;
+        if (!predHit && rHitBody(rpPos)) predHit = true;
+      }
+      predGeo.attributes.position.needsUpdate = true;
+      predLine.material.color.set(predHit ? 0xff4444 : 0x88ffcc);
+
+      let near = null, nd = 1e9;
+      for (const p of planets) { const dd = rPos.distanceTo(p.mesh.position); if (dd < nd) { nd = dd; near = p; } }
+      $('rhud').innerHTML = `🚀 speed ${rVel.length().toFixed(1)} u/s<br>☀ sun ${rPos.length().toFixed(0)} u｜${near.name} ${nd.toFixed(1)} u` +
+        (predHit ? '<br><span class="warn">⚠ impact course — turn or thrust!</span>' : '') +
+        '<br><span style="color:#888">W thrust · A/D turn · Shift boost · Esc exit</span>';
+    }
+  }
+
+  // camera: rocket > hand control > follow / fly-to / overview
+  if (rocketOn) {
+    rFwd.set(Math.cos(rHead), 0, Math.sin(rHead));
+    rCamT.copy(rPos).addScaledVector(rFwd, -6).add(rT.set(0, 2.5, 0));
+    camera.position.lerp(rCamT, 0.15);
+    rLook.copy(rPos).addScaledVector(rFwd, 4);
+    controls.target.copy(rPos);
+    camera.lookAt(rLook);
+  } else if (handOn) {
     if (lockBody) { lockBody.getWorldPosition(tmp); controls.target.lerp(tmp, 0.1); } else controls.target.lerp(ORIGIN, 0.1);
     hSph.radius += (hTarget.radius - hSph.radius) * 0.12;   // damp toward gesture target -> smooth 60fps motion
     hSph.theta += (hTarget.theta - hSph.theta) * 0.12;
@@ -602,7 +724,7 @@ function animate() {
     if (camera.position.distanceTo(homeCam) < 1) flying = false;
   }
 
-  if (!handOn) controls.update();
+  if (!handOn && !rocketOn) controls.update();
   composer.render();
   labelRenderer.render(scene, camera);
   requestAnimationFrame(animate);
