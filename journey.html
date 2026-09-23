@@ -576,20 +576,22 @@ $('skip').onclick = skipToCockpit;
 window.__go = { descent: () => { show(null); startDescent(); }, depart: () => { show(null); startLaunch(); startDepart(); }, launch: t => { show(null); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); startCockpit(); }, orbit: u => { show(null); startCockpit(); startOrbit(); orbitT = u || 0; tourIdx = TOUR.findIndex(f => f.at > (u || 0)); if (tourIdx < 0) tourIdx = TOUR.length; }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
 
 // quizzes (mission stamps)
+// asked on the way home, about what the tour actually showed
 const QUIZ = [
-  { q: '月まで ロケットで なん日 かかる？', a: ['3時間', '3日', '3年'], ok: 1 },
-  { q: 'うちゅうから見た 地球は なに色？', a: ['赤', '青', '黄色'], ok: 1 },
-  { q: '月の重力は 地球の…？', a: ['おなじ', '6分の1', '2倍'], ok: 1 },
+  { q: '月の黒い「海」は何でできている？', a: ['水', '固まった溶岩', '氷'], ok: 1 },
+  { q: '白い渦（ルナー・スワール）が黒くならない理由は？', a: ['氷が張っている', '地殻の磁石が太陽風をはね返す', '雪がふる'], ok: 1 },
+  { q: '月の重力は地球の…？', a: ['おなじ', '6分の1', '2倍'], ok: 1 },
+  { q: '月面から見ると、地球は空でどう見える？', a: ['同じ場所に止まっている', '毎日のぼってしずむ', '見えない'], ok: 0 },
 ];
-let quizIdx = 0, quizOpen = false, journeyT = 0;
+let quizIdx = 0, quizOpen = false, journeyT = 0, quizRight = 0;
 const askQuiz = () => {
   const q = QUIZ[quizIdx]; quizOpen = true; $('qq').textContent = `MISSION ${quizIdx + 1}　${q.q}`;
   $('qo').innerHTML = q.a.map((t, i) => `<button data-i="${i}">${t}</button>`).join('');
   $('qo').querySelectorAll('button').forEach(b => b.onclick = () => { const ok = +b.dataset.i === q.ok; b.classList.add(ok ? 'ok' : 'ng');
-    if (ok) { state.stars++; $('qo').querySelectorAll('button').forEach(x => x.disabled = true); setTimeout(() => { $('quiz').style.display = 'none'; quizOpen = false; quizIdx++; }, 900); } });
+    if (ok) { quizRight++; $('qo').querySelectorAll('button').forEach(x => x.disabled = true); setTimeout(() => { $('quiz').style.display = 'none'; quizOpen = false; quizIdx++; }, 900); } });
   $('quiz').style.display = 'block';
 };
-const stars = () => '⭐'.repeat(state.stars) + '☆'.repeat(3 - state.stars);
+const stars = () => '⭐'.repeat(quizRight) + '☆'.repeat(Math.max(0, QUIZ.length - quizRight));
 
 let swing = 0;                               // 1 → 0: auto-pan from Earth round to the Moon
 const DEPART_R = 3000;                       // ~19,000 km out: the whole globe fits the frame
@@ -774,9 +776,15 @@ const buildTerrain = () => {                                     // 30×30 u cra
     pos.setY(i, h - d * d / (2 * R_M));                                              // follow the Moon's curvature so the rim meets the sphere
   }
   geo.computeVertexNormals();
-  const mt = tex(`${HD}/2k_moon.jpg`); mt.wrapS = mt.wrapT = THREE.RepeatWrapping; mt.repeat.set(6, 6);
-  const bm = loader.load('https://cdn.jsdelivr.net/gh/jeromeetienne/threex.planets@master/images/moonbump1k.jpg'); bm.wrapS = bm.wrapT = THREE.RepeatWrapping; bm.repeat.set(6, 6);
-  terrain = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: mt, bumpMap: bm, bumpScale: 0.05, roughness: 1, color: 0xbdbdbd }));
+  // ponytail: procedural regolith — tiling the 2k Moon map here repeats whole craters every 500 m
+  const mt = (() => { const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d');
+    x.fillStyle = '#8c8880'; x.fillRect(0, 0, 512, 512);
+    for (const [n, r, a] of [[70, 70, .28], [260, 22, .26], [1400, 7, .22], [9000, 2.2, .18]])
+      for (let i = 0; i < n; i++) { x.globalAlpha = a; const l = 38 + Math.random() * 34;
+        x.fillStyle = `hsl(40,6%,${l}%)`; x.beginPath(); x.arc(Math.random() * 512, Math.random() * 512, r * (.4 + Math.random()), 0, 6.3); x.fill(); }
+    x.globalAlpha = 1;
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(9, 9); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; })();
+  terrain = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: mt, bumpMap: mt, bumpScale: 0.03, roughness: 1 }));
   terrain.position.copy(landPt).addScaledVector(landN, 0.03); terrain.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), landN);
   scene.add(terrain);
   const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.32, 32), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false }));
@@ -856,10 +864,14 @@ function animate() {
     const pct = phase === 'fly' ? t : 1 - t, spd = Math.round(3800 + 20000 * Math.abs(Math.cos(t * Math.PI)));
     if (rt - scrT > 0.12) { scrT = rt; updateScreens(rt, day, km, pct, spd, Math.sin(rt * 0.23) * 0.09, Math.sin(rt * 0.17) * 0.06); }
     $('mdot').style.left = (phase === 'fly' ? t : 1 - t) * 100 + '%'; $('mtxt').textContent = `${Math.round((phase === 'fly' ? t : 1 - t) * 100)}%`;
-    if (phase === 'home' && !quizOpen && quizIdx < QUIZ.length && t > [0.25, 0.5, 0.75][quizIdx]) askQuiz();
+    if (phase === 'home' && !quizOpen && quizIdx < QUIZ.length && t > 0.15 + quizIdx * 0.18) askQuiz();
     if (phase === 'fly' && t >= 1) { fade(1, () => { startOrbit(); fade(0); }); phase = 'wait'; }
     if (phase === 'home' && t >= 1) { phase = 'done'; $('jhud').style.display = 'none'; cockpit.visible = false; lookOn = false; rig.position.set(600, R_E + 900, 1600); aim(0, 0, 0); camera.rotation.set(0, 0, 0);
-      $('doneStars').textContent = stars(); $('doneMsg').textContent = `クルー ${state.pax}名、月往復ミッション完了。ミッション達成 ${state.stars}/3`;
+      const total = landStars + quizRight;
+      $('doneStars').textContent = '⭐'.repeat(Math.min(total, 7)) + '☆'.repeat(Math.max(0, 7 - total));
+      $('doneMsg').innerHTML = `クルー ${state.pax}名、月往復ミッション完了<br><br>` +
+        `🛬 着陸ミッション　<b>${landStars} / 3</b><br>❓ クイズ　<b>${quizRight} / ${QUIZ.length}</b><br><br>` +
+        `<b style="font-size:19px;color:var(--acc)">合計 ${total} / ${3 + QUIZ.length}</b>`;
       try { localStorage.setItem('unlock', 'mars'); } catch {} show('s-done'); }
   }
   if (phase === 'orbit') {
