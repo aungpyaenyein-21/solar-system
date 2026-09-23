@@ -64,7 +64,7 @@
   #map { top:14px; right:14px; background:#000a; padding:10px 16px; border-radius:12px; font-size:15px; display:none; min-width:220px; }
   #map .track { height:8px; background:#2b3358; border-radius:4px; position:relative; margin:8px 0; }
   #map .dot { position:absolute; top:-6px; width:20px; height:20px; border-radius:50%; background:var(--acc); transform:translateX(-50%); }
-  #hint { bottom:14px; left:0; right:0; text-align:center; color:#9ab; font-size:14px; }
+  #hint { top:8px; left:0; right:0; text-align:center; color:#8a9bb0; font-size:12px; }
   #quiz { position:fixed; z-index:7; left:50%; top:50%; transform:translate(-50%,-50%); width:min(520px,92vw); display:none; text-align:center; }
   #quiz .opts { display:flex; flex-direction:column; gap:10px; margin-top:12px; }
   #quiz .opts button { background:#2b3358; color:#fff; box-shadow:0 4px 0 #171b30; }
@@ -391,41 +391,176 @@ const rig = new THREE.Object3D(); scene.add(rig); rig.add(camera);
 const aim = (x, y, z) => { rig.lookAt(x, y, z); rig.rotateY(Math.PI); };
 const aimUp = (target, up) => { rig.up.copy(up); rig.lookAt(target); rig.rotateY(Math.PI); rig.up.set(0, 1, 0); };
 const cockpit = new THREE.Group(); cockpit.visible = false; rig.add(cockpit);
-scene.environment = sky;                                        // reflections on the hull
-const screenCv = document.createElement('canvas'); screenCv.width = 1024; screenCv.height = 256;
-const screenTex = new THREE.CanvasTexture(screenCv); screenTex.colorSpace = THREE.SRGBColorSpace;
-{
-  const hull = new THREE.MeshStandardMaterial({ color: 0x3a3f4a, roughness: .35, metalness: .7, side: THREE.BackSide, envMapIntensity: .8 });
-  const hullF = new THREE.MeshStandardMaterial({ color: 0x2b2f38, roughness: .4, metalness: .6, side: THREE.DoubleSide });
-  // tube interior: axis along z, from the window plane back to behind the seats
-  const tube = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 8, 64, 1, true), hull); tube.rotation.x = Math.PI / 2; tube.position.z = 1.6; cockpit.add(tube);
-  const back = new THREE.Mesh(new THREE.CircleGeometry(3, 64), hullF); back.position.z = 5.6; cockpit.add(back);
-  // front wall with the round panoramic window (r=1.3 at z=-2.4 → rim stays on screen at 60° FOV)
-  const front = new THREE.Mesh(new THREE.RingGeometry(1.3, 3.05, 96), hullF); front.position.z = -2.4; cockpit.add(front);
-  const bezel = new THREE.Mesh(new THREE.TorusGeometry(1.36, 0.1, 24, 96), new THREE.MeshStandardMaterial({ color: 0xd8dde6, roughness: .3, metalness: .8 })); bezel.position.z = -2.4; cockpit.add(bezel);
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.025, 12, 96), new THREE.MeshBasicMaterial({ color: 0xffe2b8 })); rim.position.z = -2.35; cockpit.add(rim);
-  const glass = new THREE.Mesh(new THREE.CircleGeometry(1.3, 96), new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 1, roughness: 0, thickness: 0.02, transparent: true, opacity: 0.08, depthWrite: false })); glass.position.z = -2.38; cockpit.add(glass);
-  // console: curved dark dash with an emissive instrument strip
-  const dash = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 0.55, 64, 1, true, Math.PI * 0.7, Math.PI * 0.6), new THREE.MeshStandardMaterial({ color: 0x20242c, roughness: .5, metalness: .5, side: THREE.DoubleSide }));
-  dash.position.set(0, -1.15, 0.6); dash.rotation.x = -0.3; cockpit.add(dash);
-  const strip = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.55), new THREE.MeshBasicMaterial({ map: screenTex, toneMapped: false })); strip.scale.set(0.75, 0.75, 1); strip.position.set(0, -1.02, -2.0); strip.rotation.x = -0.5; cockpit.add(strip);
-  for (const sx of [-1.7, 1.7]) { const sc = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.45), new THREE.MeshBasicMaterial({ color: 0x0b1a2a })); sc.position.set(sx, -0.55, -1.35); sc.rotation.set(-0.4, -sx * 0.35, 0); cockpit.add(sc); }
-  // ceiling light strips + fill light
-  for (const sx of [-1.4, 0, 1.4]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 4), new THREE.MeshBasicMaterial({ color: 0xcfe4ff })); l.position.set(sx, 2.7, 1.2); cockpit.add(l); }
-  const pl = new THREE.PointLight(0xdfe9ff, 6, 14, 1.6); pl.position.set(0, 1.6, 0.8); cockpit.add(pl);
-  const pl2 = new THREE.PointLight(0xffd9a6, 2.5, 8, 1.6); pl2.position.set(0, -0.6, -1.4); cockpit.add(pl2);
-}
-// instrument strip content (updated each frame while flying)
-const drawScreen = (day, km, pct, spd) => {
-  const x = screenCv.getContext('2d'); x.fillStyle = '#07111c'; x.fillRect(0, 0, 1024, 256);
-  x.strokeStyle = '#1f4f7a'; x.lineWidth = 3; x.strokeRect(6, 6, 1012, 244);
-  x.fillStyle = '#8fd3ff'; x.font = 'bold 44px monospace'; x.textAlign = 'left';
-  x.fillText(`DAY ${day}`, 40, 80); x.fillText(`${km.toLocaleString()} km`, 40, 140); x.fillText(`${spd.toLocaleString()} km/h`, 40, 200);
-  x.fillStyle = '#12304a'; x.fillRect(560, 100, 420, 20); x.fillStyle = '#ffcc55'; x.fillRect(560, 100, 420 * pct, 20);
-  x.fillStyle = '#cfe4ff'; x.font = '32px monospace'; x.fillText('EARTH', 560, 80); x.textAlign = 'right'; x.fillText('MOON', 980, 80);
-  x.textAlign = 'center'; x.fillStyle = '#ffcc55'; x.font = 'bold 36px monospace'; x.fillText(`${Math.round(pct * 100)}%`, 770, 190);
-  screenTex.needsUpdate = true;
+scene.environment = sky;                                        // the milky way doubles as the reflection probe
+const D2R = Math.PI / 180;
+
+// ---- instrument screens: small canvases redrawn ~8×/s ----
+const mkScreen = (w, h, draw) => {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'), t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return { t, draw: d => { draw(g, w, h, d); t.needsUpdate = true; } };
 };
+const frame = (g, w, h, bg = '#050c16') => { g.fillStyle = bg; g.fillRect(0, 0, w, h); g.strokeStyle = '#1b4a6b'; g.lineWidth = 5; g.strokeRect(3, 3, w - 6, h - 6); };
+const drawHorizon = (g, w, h, d) => {
+  const cx = w / 2, cy = h / 2;
+  g.save(); g.beginPath(); g.rect(4, 4, w - 8, h - 8); g.clip();
+  g.translate(cx, cy); g.rotate(d.roll); g.translate(0, d.pitch * 70);
+  g.fillStyle = '#245f9c'; g.fillRect(-w, -h * 2, w * 2, h * 2);
+  g.fillStyle = '#6a4526'; g.fillRect(-w, 0, w * 2, h * 2);
+  g.strokeStyle = '#fff'; g.lineWidth = 3; g.beginPath(); g.moveTo(-w, 0); g.lineTo(w, 0); g.stroke();
+  g.lineWidth = 2; for (let p = -3; p <= 3; p++) { if (!p) continue; const y = p * 20; g.beginPath(); g.moveTo(-24, y); g.lineTo(24, y); g.stroke(); }
+  g.restore();
+  g.strokeStyle = '#ffcc33'; g.lineWidth = 4;
+  g.beginPath(); g.moveTo(cx - 42, cy); g.lineTo(cx - 12, cy); g.moveTo(cx + 12, cy); g.lineTo(cx + 42, cy); g.stroke();
+  g.strokeStyle = '#1b4a6b'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
+};
+const drawRadar = (g, w, h, d) => {
+  frame(g, w, h, '#021109');
+  const cx = w / 2, cy = h / 2, R = w / 2 - 16;
+  g.strokeStyle = '#1d6e41'; g.lineWidth = 2;
+  for (let i = 1; i <= 3; i++) { g.beginPath(); g.arc(cx, cy, R * i / 3, 0, 6.283); g.stroke(); }
+  g.beginPath(); g.moveTo(cx - R, cy); g.lineTo(cx + R, cy); g.moveTo(cx, cy - R); g.lineTo(cx, cy + R); g.stroke();
+  g.save(); g.translate(cx, cy); g.rotate(d.t * 1.5 % 6.283);
+  const lg = g.createLinearGradient(0, 0, R, 0); lg.addColorStop(0, 'rgba(70,255,150,0.6)'); lg.addColorStop(1, 'rgba(70,255,150,0)');
+  g.fillStyle = lg; g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, R, -0.55, 0); g.closePath(); g.fill(); g.restore();
+  g.fillStyle = '#8dffbc'; for (const b of d.blips) { g.beginPath(); g.arc(cx + Math.cos(b[0]) * b[1] * R, cy + Math.sin(b[0]) * b[1] * R, 3.5, 0, 6.283); g.fill(); }
+};
+const drawBars = (g, w, h, d) => {
+  frame(g, w, h);
+  for (let i = 0; i < 7; i++) { const v = 0.22 + 0.72 * Math.abs(Math.sin(d.t * 0.9 + i * 0.9 + d.seed));
+    g.fillStyle = '#0e2036'; g.fillRect(14 + i * 23, 18, 13, h - 36);
+    g.fillStyle = i % 3 === 0 ? '#ff9b3d' : '#3fd0ff'; g.fillRect(14 + i * 23, h - 18 - v * (h - 36), 13, v * (h - 36)); }
+};
+const drawGauge = (g, w, h, d) => {
+  frame(g, w, h, '#0a0d14');
+  const cx = w / 2, cy = h / 2 - 4, R = w / 2 - 22;
+  g.lineCap = 'round'; g.strokeStyle = '#2a3346'; g.lineWidth = 9;
+  g.beginPath(); g.arc(cx, cy, R, Math.PI * 0.75, Math.PI * 2.25); g.stroke();
+  g.strokeStyle = '#ffcc33'; g.beginPath(); g.arc(cx, cy, R, Math.PI * 0.75, Math.PI * 0.75 + Math.PI * 1.5 * d.g); g.stroke();
+  g.save(); g.translate(cx, cy); g.rotate(Math.PI * 0.75 + Math.PI * 1.5 * d.g);
+  g.strokeStyle = '#fff'; g.lineWidth = 3; g.beginPath(); g.moveTo(0, 0); g.lineTo(R - 8, 0); g.stroke(); g.restore();
+  g.fillStyle = '#9fd8ff'; g.font = '15px monospace'; g.textAlign = 'center'; g.fillText(d.lbl, cx, h - 10);
+};
+const drawNav = (g, w, h, d) => {
+  frame(g, w, h);
+  g.fillStyle = '#8fd3ff'; g.font = 'bold 20px monospace';
+  g.textAlign = 'left'; g.fillText('EARTH', 16, 32); g.textAlign = 'right'; g.fillText('MOON', w - 16, 32);
+  g.fillStyle = '#12304a'; g.fillRect(16, 46, w - 32, 14);
+  g.fillStyle = '#ffcc55'; g.fillRect(16, 46, (w - 32) * d.pct, 14);
+  g.beginPath(); g.arc(16 + (w - 32) * d.pct, 53, 9, 0, 6.283); g.fill();
+  g.textAlign = 'left'; g.fillStyle = '#cfe4ff'; g.font = '20px monospace';
+  g.fillText(`DAY ${d.day}`, 16, 96); g.fillText(`${d.km.toLocaleString()} km`, 16, 122); g.fillText(`${d.spd.toLocaleString()} km/h`, 16, 148);
+};
+const screens = {
+  barsL: mkScreen(192, 176, drawBars), horizon: mkScreen(224, 176, drawHorizon), gaugeA: mkScreen(160, 160, drawGauge),
+  radar: mkScreen(256, 256, drawRadar), gaugeB: mkScreen(160, 160, drawGauge), barsR: mkScreen(192, 176, drawBars),
+  nav: mkScreen(256, 176, drawNav),
+};
+const blips = Array.from({ length: 5 }, () => [Math.random() * 6.283, 0.25 + Math.random() * 0.65]);
+let scrT = 0;
+const updateScreens = (rt, day, km, pct, spd, roll, pitchA) => {
+  screens.barsL.draw({ t: rt, seed: 0 }); screens.barsR.draw({ t: rt, seed: 2.2 });
+  screens.horizon.draw({ roll, pitch: pitchA });
+  screens.gaugeA.draw({ g: THREE.MathUtils.clamp(spd / 40000, 0, 1), lbl: 'VELOCITY' });
+  screens.gaugeB.draw({ g: THREE.MathUtils.clamp(pct, 0, 1), lbl: 'RANGE' });
+  screens.radar.draw({ t: rt, blips });
+  screens.nav.draw({ day, km, pct, spd });
+};
+
+// ---- structure: metal shell open at the front, panoramic glazing in the opening ----
+const hullMat = new THREE.MeshStandardMaterial({ color: 0x70767f, roughness: .42, metalness: .85, side: THREE.BackSide, envMapIntensity: .55 });
+const panelMat = new THREE.MeshStandardMaterial({ color: 0x353a43, roughness: .55, metalness: .65 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x1b1f27, roughness: .6, metalness: .4 });
+const trimMat = new THREE.MeshStandardMaterial({ color: 0xb9c0cb, roughness: .28, metalness: .95 });
+const R_IN = 3.2, WIN_HALF = 75 * D2R, WIN_LO = -0.32, WIN_HI = 1.62;
+{
+  const back = new THREE.Mesh(new THREE.CylinderGeometry(R_IN, R_IN, 4.4, 64, 1, true, 255 * D2R, 210 * D2R), hullMat);
+  back.position.y = 0.1; cockpit.add(back);                                       // wall behind and to the sides
+  const lo = new THREE.Mesh(new THREE.CylinderGeometry(R_IN, R_IN, WIN_LO + 2.1, 48, 1, true, 105 * D2R, 150 * D2R), hullMat);
+  lo.position.y = (WIN_LO - 2.1) / 2; cockpit.add(lo);                             // front wall below the glass
+  const hi = new THREE.Mesh(new THREE.CylinderGeometry(R_IN, R_IN, 2.3 - WIN_HI, 48, 1, true, 105 * D2R, 150 * D2R), hullMat);
+  hi.position.y = (WIN_HI + 2.3) / 2; cockpit.add(hi);                             // brow above the glass
+  const roof = new THREE.Mesh(new THREE.CircleGeometry(R_IN, 64), panelMat); roof.rotation.x = Math.PI / 2; roof.position.y = 2.3; cockpit.add(roof);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(R_IN, 64), darkMat); floor.rotation.x = -Math.PI / 2; floor.position.y = -2.1; cockpit.add(floor);
+  // mullions: 6 posts + 3 rails split the opening into 5 × 2 panes
+  const post = (th, y0, y1) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, y1 - y0, 0.26), trimMat);
+    m.position.set(Math.sin(th) * R_IN, (y0 + y1) / 2, -Math.cos(th) * R_IN); m.rotation.y = th; cockpit.add(m); };
+  for (let i = 0; i <= 5; i++) post(-WIN_HALF + (2 * WIN_HALF) * i / 5, WIN_LO, WIN_HI);
+  for (const y of [WIN_LO, (WIN_LO + WIN_HI) / 2 + 0.25, WIN_HI]) {
+    const rail = new THREE.Mesh(new THREE.TorusGeometry(R_IN, 0.055, 10, 80, 2 * WIN_HALF), trimMat);
+    rail.rotation.x = -Math.PI / 2; rail.rotation.z = -Math.PI / 2 - WIN_HALF; rail.position.y = y; cockpit.add(rail);
+  }
+  // faint glass sheen so the panes read as glazed
+  const glass = new THREE.Mesh(new THREE.CylinderGeometry(R_IN - 0.06, R_IN - 0.06, WIN_HI - WIN_LO, 48, 1, true, 105 * D2R, 150 * D2R),
+    new THREE.MeshBasicMaterial({ color: 0x9fd0ff, transparent: true, opacity: 0.045, side: THREE.BackSide, depthWrite: false }));
+  glass.position.y = (WIN_LO + WIN_HI) / 2; cockpit.add(glass);
+  // ceiling light strips
+  for (const th of [-0.5, 0, 0.5]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.03, 2.4), new THREE.MeshBasicMaterial({ color: 0xd6e8ff }));
+    l.position.set(Math.sin(th) * 1.5, 2.26, -Math.cos(th) * 1.5 + 1.2); cockpit.add(l); }
+  const key = new THREE.PointLight(0xdfe9ff, 5, 16, 1.7); key.position.set(0, 1.7, 0.6);
+  const fill = new THREE.PointLight(0xffd9a6, 3.2, 9, 1.7); fill.position.set(0, -0.5, -1.6);
+  cockpit.add(key, fill);
+}
+
+// ---- console: a conical dash carrying the screens, buttons and yokes ----
+const DASH = { yTop: -0.72, yBot: -1.75, rTop: 3.05, rBot: 2.05 };
+{
+  const d = new THREE.Mesh(new THREE.CylinderGeometry(DASH.rTop, DASH.rBot, DASH.yTop - DASH.yBot, 64, 1, true, 100 * D2R, 160 * D2R), panelMat);
+  d.position.y = (DASH.yTop + DASH.yBot) / 2; cockpit.add(d);
+  const shield = new THREE.Mesh(new THREE.CylinderGeometry(R_IN, DASH.rTop, 0.42, 64, 1, true, 100 * D2R, 160 * D2R), darkMat);
+  shield.position.y = DASH.yTop + 0.21; cockpit.add(shield);
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(DASH.rTop, 0.06, 10, 80, 160 * D2R), trimMat);
+  lip.rotation.x = -Math.PI / 2; lip.rotation.z = -Math.PI / 2 - 80 * D2R; lip.position.y = DASH.yTop; cockpit.add(lip);
+}
+const onDash = (thDeg, v, obj) => {                                   // v: 0 at the bottom lip, 1 at the top of the dash
+  const th = thDeg * D2R, y = DASH.yBot + (DASH.yTop - DASH.yBot) * v, r = DASH.rBot + (DASH.rTop - DASH.rBot) * v;
+  obj.position.set(Math.sin(th) * r, y, -Math.cos(th) * r);
+  obj.lookAt(0, 0.15, 0); cockpit.add(obj); return obj;
+};
+const scrMesh = (s, w, h) => new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: s.t, toneMapped: false }));
+onDash(-33, 0.70, scrMesh(screens.barsL, 0.42, 0.40));
+onDash(-24, 0.73, scrMesh(screens.horizon, 0.47, 0.37));
+onDash(-12, 0.75, scrMesh(screens.gaugeA, 0.38, 0.38));
+onDash(0, 0.77, scrMesh(screens.radar, 0.52, 0.52));
+onDash(12, 0.75, scrMesh(screens.gaugeB, 0.38, 0.38));
+onDash(24, 0.73, scrMesh(screens.barsR, 0.42, 0.40));
+onDash(33, 0.70, scrMesh(screens.nav, 0.47, 0.34));
+// button rows + status LEDs
+const LED = [0xff4d4d, 0x4dff8f, 0x5ad1ff, 0xffcc33];
+for (let i = 0; i < 26; i++) {
+  const th = -42 + i * 3.4, col = LED[i % 4];
+  const b = onDash(th, 0.42, new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.055, 0.02),
+    new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 1.3, roughness: .4 })));
+  b.userData.blink = Math.random() * 6;
+}
+for (let i = 0; i < 18; i++) {
+  const th = -34 + i * 4.0;
+  onDash(th, 0.94, new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, 0.015),
+    new THREE.MeshStandardMaterial({ color: 0x9fe8ff, emissive: 0x3fbfff, emissiveIntensity: 0.9, roughness: .5 })));
+}
+// two yokes
+const yokes = [];
+for (const side of [-1, 1]) {
+  const y = new THREE.Group();
+  const col = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.42, 12), darkMat); col.position.y = 0.21; y.add(col);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.07, 0.1), darkMat); bar.position.y = 0.44; y.add(bar);
+  for (const gx of [-0.22, 0.22]) { const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.2, 12), new THREE.MeshStandardMaterial({ color: 0x24282f, roughness: .85 }));
+    grip.position.set(gx, 0.5, 0); y.add(grip);
+    const btn = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, 0.04), new THREE.MeshStandardMaterial({ color: 0xff4d4d, emissive: 0xff2222, emissiveIntensity: 1.2 }));
+    btn.position.set(gx, 0.61, 0.02); y.add(btn); }
+  onDash(side * 20, 0.08, y); yokes.push(y);
+}
+// side panels with button grids
+for (const side of [-1, 1]) {
+  const p = new THREE.Group();
+  p.add(new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.62, 0.05), panelMat));
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 5; c++) {
+    const col = LED[(r + c) % 4];
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.02), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.9, roughness: .5 }));
+    b.position.set(-0.3 + c * 0.15, 0.18 - r * 0.18, 0.035); p.add(b);
+  }
+  onDash(side * 68, 0.62, p);
+}
 const seats = new THREE.Group(); cockpit.add(seats);
 const label = (t, y) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'color:#fff;font-size:13px;background:#0008;padding:2px 8px;border-radius:8px'; const o = new CSS2DObject(d); o.position.y = y; return o; };
 let astronautProto = null;
@@ -544,9 +679,9 @@ $('goHome').onclick = () => { fade(1, () => { phase = 'home'; pt = 0; lm.visible
 $('again').onclick = () => alert('火星はこれからつくります 🚧');
 $('restart').onclick = () => location.reload();
 
-const clock = new THREE.Clock();
+const clock = new THREE.Clock(); let rt = 0;   // real seconds, for instrument animation (pt restarts each phase)
 function animate() {
-  const raw = clock.getDelta(), dt = Math.min(raw, 0.05); pt += raw;
+  const raw = clock.getDelta(), dt = Math.min(raw, 0.05); pt += raw; rt += raw;
   glow.visible = rig.position.length() > R_ATM * 1.005;
   const spin = (phase === 'count' || phase === 'launch') ? 0 : dt * 0.02;
   earth.rotation.y += spin; clouds.rotation.y += spin + dt * 0.004; moon.rotation.y += dt * 0.002;
@@ -610,7 +745,8 @@ function animate() {
       ? `<b>DAY ${day}</b> / 3<br>地球から <b>${km.toLocaleString()} km</b><br>${stars()}<br><button id="ff" style="font-size:13px;padding:4px 10px">速度 ${state.speed}×</button>`
       : `地球へ帰還中<br>${stars()}`;
     const ff = $('ff'); if (ff) ff.onclick = () => { state.speed = state.speed === 1 ? 3 : state.speed === 3 ? 8 : 1; };
-    drawScreen(day, km, phase === 'fly' ? t : 1 - t, Math.round(3800 + 20000 * Math.abs(Math.cos(t * Math.PI))));
+    const pct = phase === 'fly' ? t : 1 - t, spd = Math.round(3800 + 20000 * Math.abs(Math.cos(t * Math.PI)));
+    if (rt - scrT > 0.12) { scrT = rt; updateScreens(rt, day, km, pct, spd, Math.sin(rt * 0.23) * 0.09, Math.sin(rt * 0.17) * 0.06); }
     $('mdot').style.left = (phase === 'fly' ? t : 1 - t) * 100 + '%'; $('mtxt').textContent = `${Math.round((phase === 'fly' ? t : 1 - t) * 100)}%`;
     if (phase === 'fly' && !quizOpen && quizIdx < 3 && t > [0.2, 0.5, 0.8][quizIdx]) askQuiz();
     if (phase === 'fly' && t >= 1) { fade(1, () => { startLanding(); fade(0); }); phase = 'wait'; }
