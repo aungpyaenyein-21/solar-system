@@ -70,10 +70,12 @@
   #dhud .ok { color:#4dff8f; } #dhud .warn { color:#ffcc33; } #dhud .bad { color:#ff5555; }
   #dhud .bar { display:inline-block; width:90px; height:9px; background:#223; border-radius:5px; vertical-align:middle; overflow:hidden; }
   #dhud .bar i { display:block; height:100%; background:var(--acc); }
-  #pad { position:fixed; right:14px; bottom:14px; z-index:6; display:none; grid-template-columns:repeat(3,52px); grid-template-rows:repeat(2,52px); gap:6px; }
-  #pad button { font-size:20px; padding:0; border-radius:10px; background:#242a44cc; color:#fff; border:1px solid #3a4370; }
-  #pad button:nth-child(1){grid-area:2/1} #pad button:nth-child(2){grid-area:1/2} #pad button:nth-child(3){grid-area:2/2} #pad button:nth-child(4){grid-area:2/3}
-  #pad button.thr { grid-area:1/1/2/2; background:#7a3b1acc; border-color:#c4642a; }
+  #pad { position:fixed; right:14px; bottom:14px; z-index:6; display:none; grid-template-columns:repeat(3,58px); grid-auto-rows:46px; gap:6px; }
+  #pad button { font-size:14px; padding:0; border-radius:10px; background:#242a44cc; color:#fff; border:1px solid #3a4370; line-height:1.2; }
+  #pad button.thr { background:#7a3b1acc; border-color:#c4642a; }
+  #pad button.auto { grid-column:1/4; background:#1d3a52cc; border-color:#2f6d99; font-size:12px; }
+  #pad button.on { background:#2f6d99; }
+  #dhud .dir { color:#7fd4ff; } #dhud .ts { color:#ffcc33; }
   body.clean #dhud, body.clean #pad { display:none !important; }
   #ohud b { color:var(--acc); }
   #hideShip { position:fixed; right:14px; top:120px; z-index:6; display:none; font-size:13px; padding:7px 14px; background:#242a44; color:#fff; border-color:#3a4370; }
@@ -142,6 +144,22 @@
   <button class="big" id="board">搭乗して発射準備へ</button>
 </div></div>
 
+<div class="screen" id="s-mode"><div class="center"><div class="card" style="max-width:660px">
+  <h1>着陸ミッション</h1>
+  <p class="info">母船から <b>着陸船</b> を切りはなして、月面におります。<br>
+  月には <b>空気がほとんどありません</b>。パラシュートは使えず、<b>エンジンだけ</b>でブレーキをかけます。</p>
+  <ol class="info" style="text-align:left;line-height:1.85;font-size:15px">
+    <li><b>分離</b> — 高度 110 km の周回軌道で母船からはなれる</li>
+    <li><b>降下噴射 DOI</b> — タイミングを合わせてエンジンを吹かし、近月点を 15 km へ</li>
+    <li><b>制動</b> — 高度 15 km・前進 1,690 m/s を、8 分かけてエンジンで殺す</li>
+    <li><b>最終降下</b> — 高度 2.3 km から、岩をよけて着陸</li>
+  </ol>
+  <div class="row">
+    <button class="big" id="modeEasy">やさしい<br><span style="font-size:12px;opacity:.75">自動操縦つき・最後の 2.3 km だけ自分で　⭐最大 3</span></button>
+    <button class="big sec" id="modeReal">本番 アポロモード<br><span style="font-size:12px;opacity:.75">分離から着陸まで全部自分で　⭐最大 5</span></button>
+  </div>
+</div></div></div>
+
 <!-- ⑦ 着陸 / ⑧ 完了 -->
 <div class="screen" id="s-land"><div class="center"><div class="card" style="max-width:600px">
   <h1>月面着陸</h1>
@@ -171,7 +189,11 @@
 <div class="hud" id="ohud"></div>
 <button id="hideShip">🚀 機体を消す</button>
 <div class="hud" id="dhud"></div>
-<div id="pad"><button data-k="ArrowLeft">◀</button><button data-k="ArrowUp">▲</button><button data-k="ArrowDown">▼</button><button data-k="ArrowRight">▶</button><button data-k="Space" class="thr">🔥</button></div>
+<div id="pad">
+  <button data-k="ThrUp" class="thr">🔥▲</button><button data-k="PitUp">機首▲</button><button data-k="Left">◀</button>
+  <button data-k="ThrDn" class="thr">🔥▼</button><button data-k="PitDn">機首▼</button><button data-k="Right">▶</button>
+  <button data-k="Fire" class="thr">噴射</button><button id="autoBtn" class="auto" style="grid-column:2/4">自動操縦 AUTO</button>
+</div>
 <button id="shot">記念写真を保存</button>
 <button id="skip">スキップ ▶▶</button>
 <div class="hud" id="map"><div>EARTH <span style="float:right">MOON</span></div><div class="track"><div class="dot" id="mdot"></div></div><div id="mtxt"></div></div>
@@ -544,8 +566,15 @@ gltf.load('assets/cockpit.glb', g => {
 const lm = new THREE.Group(); lm.visible = false; scene.add(lm);
 gltf.load(`${NASA}/Apollo%20Lunar%20Module/Apollo%20Lunar%20Module.glb`, gl => { const m = gl.scene; const box = new THREE.Box3().setFromObject(m); m.scale.setScalar(0.6 / (box.max.y - box.min.y)); const b2 = new THREE.Box3().setFromObject(m); m.position.y = -b2.min.y; lm.add(m); },
   undefined, () => { const b = new THREE.Mesh(new THREE.OctahedronGeometry(0.7), new THREE.MeshStandardMaterial({ color: 0xd4af37 })); b.position.y = 0.9; lm.add(b); });
+// command module left in orbit — ponytail: exaggerated like the LM, at true scale a real one is a speck
+const mother = new THREE.Group(); mother.visible = false; scene.add(mother);
+{ const mat = new THREE.MeshStandardMaterial({ color: 0xc9ccd4, metalness: 0.6, roughness: 0.35 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.26, 16), mat);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.15, 16), mat); nose.position.y = 0.205;
+  const bell = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.10, 16), mat); bell.position.y = -0.18; bell.rotation.x = Math.PI;
+  mother.add(body, nose, bell); }
 // dust
-const dustN = 200, dustArr = new Float32Array(dustN * 3), dustVel = [];
+const dustN = 200, dustArr = new Float32Array(dustN * 3), dustVel = Array.from({ length: dustN }, () => new THREE.Vector3());
 const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute('position', new THREE.BufferAttribute(dustArr, 3));
 const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xbbbbbb, size: 0.03, transparent: true, opacity: 0 })); scene.add(dust);
 
@@ -576,7 +605,7 @@ const skipToCockpit = () => { stopCam(); show(null); flame.visible = false; trai
 $('skipTicket').disabled = !assetsReady;
 $('skipTicket').onclick = skipToCockpit;
 $('skip').onclick = skipToCockpit;
-window.__go = { descent: () => { show(null); startDescent(); }, depart: () => { show(null); startLaunch(); startDepart(); }, launch: t => { show(null); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); startCockpit(); }, orbit: u => { show(null); startCockpit(); startOrbit(); orbitT = u || 0; tourIdx = TOUR.findIndex(f => f.at > (u || 0)); if (tourIdx < 0) tourIdx = TOUR.length; }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
+window.__go = { descent: hard => { show(null); startDescent(hard !== false); }, final: o => { startFinal(); Object.assign(__D, o || {}); }, depart: () => { show(null); startLaunch(); startDepart(); }, launch: t => { show(null); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); startCockpit(); }, orbit: u => { show(null); startCockpit(); startOrbit(); orbitT = u || 0; tourIdx = TOUR.findIndex(f => f.at > (u || 0)); if (tourIdx < 0) tourIdx = TOUR.length; }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
 
 // quizzes (mission stamps)
 // asked on the way home, about what the tour actually showed
@@ -702,81 +731,141 @@ const orbitCurve = new THREE.CatmullRomCurve3([
 ].map(([la, lo]) => latLon(la, lo, ORBIT_R)), true, 'centripetal');
 const startOrbit = () => {
   phase = 'orbit'; pt = 0; orbitT = 0; tourIdx = 0;
-  cockpit.visible = true; lookOn = true; pinGroup.visible = true; orbitLamp.visible = true;
+  cockpit.visible = true; lookOn = true; pinGroup.visible = true; orbitLamp.visible = true; orbitLamp.intensity = 1.7;
   $('jhud').style.display = 'none'; $('map').style.display = 'none'; $('ohud').style.display = 'block'; $('hideShip').style.display = 'block';
   yaw = 0; pitch = -0.01;
 };
 
-// ---------- mission: powered descent, flown by the player ----------
-// ponytail: physics in real SI metres, rendered at 100 m per scene unit — the world scale (1 u ≈ 6.4 km)
-// would make a 2 km approach invisible, and the HUD has to read in metres to teach anything.
-const MPU = 100, G_MOON = 1.62, THRUST = 3.4, RCS = 1.2;
-const D = { alt: 0, vy: 0, x: 0, z: 0, vx: 0, vz: 0, fuel: 100, dead: 0, done: false, stars: 0 };
-const east = new THREE.Vector3(), north = new THREE.Vector3(), dTmp = new THREE.Vector3();
-let target = null, landStars = 0;
+// ---------- mission: Apollo-style powered descent ----------
+// Physics runs in real SI units. Two render frames are stitched together at the 2.3 km gate:
+//   high stages — true scale on the Moon sphere (1 u = 6435 m), cockpit view, ground streaming past
+//   final stage — the flat tangent patch at MPU = 100 m/u, chase view, LM visible
+// ponytail: one guidance law serves both the autopilot and the flight director the player follows.
+const MPU = 100, MOON_R = 1.7374e6, M2U = MOON_R / R_M, G_MOON = 1.62;
+const LM_DRY = 6900, LM_PROP = 8900, THRUST_N = 45040, MDOT = 45040 / 3050;   // Apollo LM descent stage, Isp 311 s
+const ORB_ALT = 110000, PDI_ALT = 15000, PDI_VS = 1690, PDI_S = 520000;
+const GATE_ALT = 2300, GATE_VS = 150, GATE_S = 4000;                          // Apollo "high gate"
+const DOI_ANG = PDI_S / MOON_R + Math.PI;                                     // the burn happens half an orbit before PDI
+const OMEGA = 1629 / (MOON_R + ORB_ALT);                                      // circular rate at 110 km, rad/s
+
+const D = { stage: '', alt: 0, vy: 0, s: 0, vs: 0, x: 0, vx: 0, prop: 0, thr: 0, pitch: 0,
+            ang: 0, mAng: 0, u: 0, doiErr: 0, auto: false, autoUsed: false, done: false, hard: false, ts: 1 };
+const east = new THREE.Vector3(), north = new THREE.Vector3(), dTmp = new THREE.Vector3(), dTmp2 = new THREE.Vector3(), dUp = new THREE.Vector3();
+let target = null, landStars = 0, landMax = 3, rocks = null, doiStar = 0, gateStar = 0;
 const keyDown = {};
-addEventListener('keydown', e => { keyDown[e.code] = true; if (phase === 'descent' && /Arrow|Space/.test(e.code)) e.preventDefault(); });
-addEventListener('keyup', e => keyDown[e.code] = false);
-for (const b of $('pad').children) {                       // touch controls mirror the keys
+const KEYMAP = { ArrowUp: 'ThrUp', ArrowDown: 'ThrDn', ArrowLeft: 'PitUp', ArrowRight: 'PitDn', KeyA: 'Left', KeyD: 'Right', Space: 'Fire' };
+addEventListener('keydown', e => { const k = KEYMAP[e.code]; if (phase === 'descent' && k) { keyDown[k] = true; e.preventDefault(); } });
+addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keyDown[k] = false; });
+for (const b of $('pad').querySelectorAll('button[data-k]')) {                 // touch controls mirror the keys
   const k = b.dataset.k;
   const on = e => { e.preventDefault(); keyDown[k] = true; }, off = e => { e.preventDefault(); keyDown[k] = false; };
   b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointerleave', off);
 }
-const startDescent = () => {
+$('autoBtn').onclick = () => { D.auto = !D.auto; if (D.auto) D.autoUsed = true; $('autoBtn').classList.toggle('on', D.auto); };
+
+window.__D = D;
+const gOut = { thr: 0, pitch: 0 };
+const guide = () => {                       // the deceleration that hits the next gate, split into throttle + attitude
+  const fin = D.stage === 'final';
+  const gs = fin ? 0 : GATE_S, gv = fin ? 0 : GATE_VS, ga = fin ? 0 : GATE_ALT, ds = D.s - gs;
+  const ax = THREE.MathUtils.clamp(ds > 20 ? (D.vs * D.vs - gv * gv) / (2 * ds) : (D.vs - gv) * 0.6, -1, 8);
+  const tgo = 2 * Math.max(ds, 20) / Math.max(D.vs + gv, 15);
+  const vyWant = fin ? -Math.max(0.8, Math.min(D.alt / 12, 45)) : (ga - D.alt) / Math.max(tgo, 1);
+  const av = Math.max((vyWant - D.vy) * 0.3 + G_MOON, 0);
+  const aMax = THRUST_N / (LM_DRY + D.prop);
+  gOut.thr = Math.min(Math.hypot(av, ax) / aMax, 1);
+  gOut.pitch = Math.atan2(ax, Math.max(av, 0.01));
+  return gOut;
+};
+const arcPos = (out, alt, ang) => out.copy(landN).applyAxisAngle(east, -ang).multiplyScalar(R_M + alt / M2U).add(MOON_POS);   // ang = uprange angle, so travel runs toward ang = 0 (matches +north in the final frame)
+
+const startDescent = hard => {
   phase = 'descent'; pt = 0;
-  cockpit.visible = false; lookOn = false;
   landN.copy(MOON_DIR).negate().addScaledVector(SUN_DIR, 0.8).normalize();   // near side ∩ sunlit side
   landPt.copy(MOON_POS).addScaledVector(landN, R_M);
-  if (!terrain) buildTerrain();
   east.crossVectors(new THREE.Vector3(0, 1, 0), landN).normalize();
-  north.crossVectors(landN, east).normalize();
+  north.crossVectors(landN, east).normalize();                               // +north = uprange, the craft flies toward −north
+  landMax = hard ? 5 : 3; doiStar = gateStar = 0;
+  Object.assign(D, { stage: 'undock', hard, alt: ORB_ALT, vy: 0, s: PDI_S, vs: 1629, x: 0, vx: 0,
+                     prop: LM_PROP, thr: 0, pitch: 0, ang: DOI_ANG + 0.85, mAng: DOI_ANG + 0.85 - 0.008,
+                     u: 0, doiErr: 0, auto: !hard, autoUsed: false, done: false, ts: 1 });
+  $('autoBtn').classList.toggle('on', D.auto);
+  cockpit.visible = true; lookOn = true; lm.visible = false; mother.visible = true;
+  orbitLamp.visible = true; glow.visible = false;
+  pinGroup.visible = false;                                                  // CSS2D labels don't inherit an invisible parent
+  for (const k in PINS) PINS[k].mesh.visible = PINS[k].lab.visible = false;
+  scene.fog.near = 1e6; scene.fog.far = 2e6; dust.material.opacity = 0;
+  if (target) target.visible = false;
+  yaw = 0; pitch = 0;
+  $('dhud').style.display = 'block'; $('pad').style.display = 'grid';
+  $('ohud').style.display = $('hideShip').style.display = $('jhud').style.display = $('map').style.display = 'none';
+};
+
+const startFinal = () => {                   // hand over from the sphere frame to the flat patch
+  D.stage = 'final'; D.ts = 1;
+  D.s = THREE.MathUtils.clamp(D.s, 400, 9000); D.x = 250; D.vx = 0;
+  if (!terrain) buildTerrain();
+  if (!rocks) buildRocks();
   if (!target) {
     target = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.40, 40), new THREE.MeshBasicMaterial({ color: 0x4dff8f, side: THREE.DoubleSide, transparent: true, opacity: 0.85 }));
     target.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), landN); scene.add(target);
   }
   target.position.copy(landPt).addScaledVector(landN, 0.06); target.visible = true; target.scale.setScalar(1);
-  Object.assign(D, { alt: 2000, vy: -28, x: 240, z: -190, vx: -11, vz: 7, fuel: 100, dead: 0, done: false });
-  lm.visible = true; dust.material.opacity = 0; scene.fog.near = 1e6; scene.fog.far = 2e6; glow.visible = false;
-  $('dhud').style.display = 'block'; $('pad').style.display = 'grid';
+  cockpit.visible = false; lookOn = false; lm.visible = true; mother.visible = false;
 };
-const lmPos = (out) => out.copy(landPt).addScaledVector(landN, D.alt / MPU).addScaledVector(east, D.x / MPU).addScaledVector(north, D.z / MPU);
+
+const buildRocks = () => {                   // Armstrong's boulder field: why he flew the last 100 m by hand
+  rocks = []; const geo = new THREE.IcosahedronGeometry(1, 0);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x9a968d, roughness: 1, flatShading: true });
+  for (let i = 0; i < 14; i++) {
+    const a = Math.random() * 6.283, d = 14 + Math.random() * 55, r = 2 + Math.random() * 4;   // 2–6 m boulders
+    const m = new THREE.Mesh(geo, mat); m.scale.set(r / MPU, r / MPU * 0.7, r / MPU);
+    m.position.copy(landPt).addScaledVector(north, Math.cos(a) * d / MPU).addScaledVector(east, Math.sin(a) * d / MPU).addScaledVector(landN, r / MPU * 0.3);
+    scene.add(m); rocks.push([Math.cos(a) * d, Math.sin(a) * d]);
+  }
+};
+
+const lmPos = (out) => out.copy(landPt).addScaledVector(landN, D.alt / MPU).addScaledVector(north, D.s / MPU).addScaledVector(east, D.x / MPU);
+
 const touchdown = () => {
   D.done = true;
-  const v = Math.abs(D.vy), off = Math.hypot(D.x, D.z);
-  landStars = (v < 1.5 ? 1 : 0) + (off < 8 ? 1 : 0) + (D.fuel > 20 ? 1 : 0);
-  if (v > 5 || off > 40) landStars = 0;
+  const v = Math.abs(D.vy), off = Math.hypot(D.s, D.x), fuel = D.prop / LM_PROP * 100;
+  let rockD = 999; for (const r of rocks) rockD = Math.min(rockD, Math.hypot(r[0] - D.s, r[1] - D.x));
+  landStars = (v < 1.5 ? 1 : 0) + (off < 25 && rockD > 12 ? 1 : 0) + (fuel > 8 ? 1 : 0) + (D.hard ? doiStar + gateStar : 0);
+  if (v > 5 || off > 60) landStars = 0;
   state.stars += landStars;
   $('dhud').style.display = 'none'; $('pad').style.display = 'none'; target.visible = false;
-  $('landStars').textContent = '⭐'.repeat(landStars) + '☆'.repeat(3 - landStars);
+  $('landStars').textContent = '⭐'.repeat(landStars) + '☆'.repeat(Math.max(0, landMax - landStars));
   $('landScore').innerHTML = landStars === 0
     ? `もう一度ためそう — 着地 <b>${v.toFixed(1)} m/s</b>、目標から <b>${off.toFixed(0)} m</b>`
-    : `着地 <b>${v.toFixed(1)} m/s</b>　目標から <b>${off.toFixed(0)} m</b>　燃料 <b>${D.fuel.toFixed(0)}%</b><br>
-       <span style="color:#9ab">アポロ11号は燃料 残り25秒で着陸した</span>`;
+    : `着地 <b>${v.toFixed(1)} m/s</b>　目標から <b>${off.toFixed(0)} m</b>　いちばん近い岩 <b>${rockD.toFixed(0)} m</b>　燃料 <b>${fuel.toFixed(0)}%</b>` +
+      (D.hard ? `<br>分離タイミング ${doiStar ? '◎' : '✕'}　高度2.3km 通過 ${gateStar ? '◎' : '✕'}${D.autoUsed ? '（自動操縦を使いました）' : ''}` : '') +
+      `<br><span style="color:#9ab">アポロ11号は燃料 残り25秒で着陸した</span>`;
   $('retry').style.display = landStars === 0 ? '' : 'none';
   setTimeout(() => { phase = 'landed'; show('s-land'); }, 1400);
 };
 
 const startLanding = () => {
-  phase = 'land'; pt = 0; cockpit.visible = false; lookOn = false; lm.visible = true; $('quiz').style.display = 'none'; quizOpen = false;
+  phase = 'land'; pt = 0; cockpit.visible = false; lookOn = false; lm.visible = true; lm.scale.setScalar(1); $('quiz').style.display = 'none'; quizOpen = false;
   $('jhud').style.display = 'none'; $('map').style.display = 'none'; $('hint').style.display = 'none';
   // surface point on the moon facing earth-ish; rig = side camera
   landN.copy(MOON_DIR).negate().addScaledVector(SUN_DIR, 0.8).normalize();   // near side ∩ sunlit side
   landPt.copy(MOON_POS).addScaledVector(landN, R_M);
   if (!terrain) buildTerrain();
-  for (let i = 0; i < dustN; i++) { dustArr.set([landPt.x, landPt.y, landPt.z], i * 3); dustVel.push(new THREE.Vector3()); }
+  for (let i = 0; i < dustN; i++) dustArr.set([landPt.x, landPt.y, landPt.z], i * 3);
 };
 const landPt = new THREE.Vector3(), landN = new THREE.Vector3();
 let terrain = null;
-const buildTerrain = () => {                                     // 30×30 u cratered patch tangent to the Moon at the landing site
-  const N = 160, geo = new THREE.PlaneGeometry(30, 30, N, N); geo.rotateX(-Math.PI / 2);
+const buildTerrain = () => {                                     // 120×120 u cratered patch tangent to the Moon at the landing site
+  const N = 200, geo = new THREE.PlaneGeometry(120, 120, N, N); geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position, craters = [];
-  for (let i = 0; i < 26; i++) { const r = 0.6 + Math.random() * 3.2; let cx, cz; do { cx = (Math.random() - .5) * 28; cz = (Math.random() - .5) * 28; } while (Math.hypot(cx, cz) < 3 + r); craters.push([cx, cz, r, r * (0.18 + Math.random() * 0.12)]); }
+  for (let i = 0; i < 110; i++) { const r = 0.6 + Math.random() * 4.5; let cx, cz; do { cx = (Math.random() - .5) * 112; cz = (Math.random() - .5) * 112; } while (Math.hypot(cx, cz) < 3 + r); craters.push([cx, cz, r, r * (0.18 + Math.random() * 0.12)]); }
   const hash = (x, z) => { const v = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return v - Math.floor(v); };
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i); let h = 0;
     for (const [cx, cz, r, d] of craters) { const q = Math.hypot(x - cx, z - cz) / r; if (q < 1) h -= d * (1 - q * q) * (1 - q * q); const e = Math.exp(-((q - 1) * (q - 1)) / 0.02); h += d * 0.35 * e; }
     h += (hash(Math.floor(x * 2), Math.floor(z * 2)) - .5) * 0.05 + (hash(Math.floor(x * 9), Math.floor(z * 9)) - .5) * 0.012;
-    const d = Math.hypot(x, z), edge = THREE.MathUtils.smoothstep(d, 11, 15); h *= 1 - edge;
+    const d = Math.hypot(x, z), edge = THREE.MathUtils.smoothstep(d, 46, 60); h *= 1 - edge;
     pos.setY(i, h - d * d / (2 * R_M));                                              // follow the Moon's curvature so the rim meets the sphere
   }
   geo.computeVertexNormals();
@@ -787,14 +876,16 @@ const buildTerrain = () => {                                     // 30×30 u cra
       for (let i = 0; i < n; i++) { x.globalAlpha = a; const l = 38 + Math.random() * 34;
         x.fillStyle = `hsl(40,6%,${l}%)`; x.beginPath(); x.arc(Math.random() * 512, Math.random() * 512, r * (.4 + Math.random()), 0, 6.3); x.fill(); }
     x.globalAlpha = 1;
-    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(9, 9); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; })();
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(34, 34); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; })();
   terrain = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: mt, bumpMap: mt, bumpScale: 0.03, roughness: 1 }));
   terrain.position.copy(landPt).addScaledVector(landN, 0.03); terrain.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), landN);
   scene.add(terrain);
   const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.32, 32), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false }));
   shadow.position.copy(landPt).addScaledVector(landN, 0.05); shadow.quaternion.copy(terrain.quaternion); scene.add(shadow); terrain.userData.shadow = shadow;
 };
-$('retry').onclick = () => { show(null); startDescent(); };
+$('retry').onclick = () => show('s-mode');
+$('modeEasy').onclick = () => { show(null); startDescent(false); };
+$('modeReal').onclick = () => { show(null); startDescent(true); };
 $('goHome').onclick = () => { fade(1, () => { phase = 'home'; pt = 0; lm.visible = false; dust.material.opacity = 0; cockpit.visible = true; lookOn = true; show(null); $('jhud').style.display = 'block'; fade(0); }); };
 $('again').onclick = () => alert('火星はこれからつくります 🚧');
 $('restart').onclick = () => location.reload();
@@ -874,8 +965,8 @@ function animate() {
       const total = landStars + quizRight;
       $('doneStars').textContent = '⭐'.repeat(Math.min(total, 7)) + '☆'.repeat(Math.max(0, 7 - total));
       $('doneMsg').innerHTML = `クルー ${state.pax}名、月往復ミッション完了<br><br>` +
-        `🛬 着陸ミッション　<b>${landStars} / 3</b><br>❓ クイズ　<b>${quizRight} / ${QUIZ.length}</b><br><br>` +
-        `<b style="font-size:19px;color:var(--acc)">合計 ${total} / ${3 + QUIZ.length}</b>`;
+        `🛬 着陸ミッション　<b>${landStars} / ${landMax}</b><br>❓ クイズ　<b>${quizRight} / ${QUIZ.length}</b><br><br>` +
+        `<b style="font-size:19px;color:var(--acc)">合計 ${total} / ${landMax + QUIZ.length}</b>`;
       try { localStorage.setItem('unlock', 'mars'); } catch {} show('s-done'); }
   }
   if (phase === 'orbit') {
@@ -889,37 +980,120 @@ function animate() {
       pm.visible = PINS[k].lab.visible = pinTmp.dot(pinTmp2.copy(rig.position).sub(pm.position).normalize()) > 0.12; }
     if (tourIdx < TOUR.length && orbitT >= TOUR[tourIdx].at) showFact(TOUR[tourIdx++]);
     $('ohud').innerHTML = `🌕 月をまわっています<br><b>${Math.round(orbitT * 100)}%</b> / 1周　${tourIdx}/${TOUR.length}`;
-    if (orbitT >= 1) { fade(1, () => { $('ohud').style.display = $('hideShip').style.display = 'none'; pinGroup.visible = false; startDescent(); fade(0); }); phase = 'wait'; }
+    if (orbitT >= 1) { fade(1, () => { $('ohud').style.display = $('hideShip').style.display = 'none'; pinGroup.visible = false; show('s-mode'); fade(0); }); phase = 'wait'; }
   }
   if (phase === 'descent') {
+    const st = D.stage;
+    D.ts = st === 'orbitwait' ? 40 : st === 'doiburn' ? 4 : st === 'transfer' ? 120 : st === 'brake' ? 8 : 1;
+    const rdt = Math.min(dt, 0.05), sdt = rdt * D.ts;
     if (!D.done) {
-      const step = Math.min(dt, 0.05);
-      const burn = keyDown.Space && D.fuel > 0;
-      const lx = (keyDown.ArrowRight ? 1 : 0) - (keyDown.ArrowLeft ? 1 : 0);
-      const lz = (keyDown.ArrowUp ? 1 : 0) - (keyDown.ArrowDown ? 1 : 0);
-      if (burn) { D.vy += (THRUST - G_MOON) * step; D.fuel -= 1.6 * step; } else D.vy -= G_MOON * step;
-      if (D.fuel > 0 && (lx || lz)) { D.vx += lx * RCS * step; D.vz += lz * RCS * step; D.fuel -= 0.5 * step * (Math.abs(lx) + Math.abs(lz)); }
-      D.fuel = Math.max(0, D.fuel);
-      D.alt += D.vy * step; D.x += D.vx * step; D.z += D.vz * step;
-      lmPos(dTmp); lm.position.copy(dTmp); lm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), landN);
-      target.scale.setScalar(1 + D.alt / 900);          // keep the ring findable from altitude
-      flame.visible = false;
-      // chase camera: behind and above, target and craft both in frame
-      rig.position.copy(dTmp).addScaledVector(landN, 0.30 + D.alt / MPU * 0.22).addScaledVector(north, -(1.1 + D.alt / MPU * 0.20));
-      aimUp(dTmp, landN); camera.rotation.set(0, 0, 0);
-      if (D.alt < 60) {                                    // kick up dust on the last stretch
-        if (dust.material.opacity === 0) { dust.material.opacity = 0.75;
-          for (let i = 0; i < dustN; i++) { const a = Math.random() * Math.PI * 2;
-            dustVel[i].crossVectors(landN, new THREE.Vector3(Math.cos(a), 0, Math.sin(a))).normalize().multiplyScalar(0.3 + Math.random()); dustArr.set([dTmp.x, dTmp.y, dTmp.z], i * 3); } }
+      const g = guide();
+      // ---- controls: the autopilot flies the director, the player chases it
+      if (st === 'brake' || st === 'final') {
+        if (D.auto) { D.thr = g.thr; D.pitch = g.pitch; D.vx += (-D.x * 0.03 - D.vx * 0.9) * rdt; }
+        else {
+          if (keyDown.ThrUp) D.thr = Math.min(1, D.thr + 0.6 * rdt);
+          if (keyDown.ThrDn) D.thr = Math.max(0, D.thr - 0.6 * rdt);
+          if (keyDown.PitUp) D.pitch = Math.min(1.5, D.pitch + 0.7 * rdt);
+          if (keyDown.PitDn) D.pitch = Math.max(-0.4, D.pitch - 0.7 * rdt);
+          const lat = (keyDown.Right ? 1 : 0) - (keyDown.Left ? 1 : 0);
+          if (lat && D.prop > 0) { D.vx += lat * 1.2 * sdt; D.prop -= 0.6 * sdt; }
+        }
       }
-      const off = Math.hypot(D.x, D.z), v = Math.abs(D.vy);
-      const cls = v < 1.5 ? 'ok' : v < 3 ? 'warn' : 'bad', ocl = off < 8 ? 'ok' : off < 25 ? 'warn' : 'bad';
-      $('dhud').innerHTML = `高度 <b>${Math.max(0, D.alt).toFixed(0)} m</b><br>` +
-        `降下 <b class="${cls}">−${v.toFixed(1)} m/s</b><br>` +
-        `目標まで <b class="${ocl}">${off.toFixed(0)} m</b><br>` +
-        `燃料 <span class="bar"><i style="width:${D.fuel}%"></i></span> ${D.fuel.toFixed(0)}%<br>` +
-        `<span style="color:#8a9bb0;font-size:12px">Space＝エンジン　矢印＝横移動</span>`;
-      if (D.alt <= 0) { D.alt = 0; lmPos(dTmp); lm.position.copy(dTmp); touchdown(); }
+      // ---- stage machine
+      if (st === 'undock') { if (pt > 4.5) D.stage = 'orbitwait'; }
+      else if (st === 'orbitwait') {
+        D.ang -= OMEGA * sdt; D.mAng -= OMEGA * sdt;
+        const err = D.ang - DOI_ANG;
+        if (keyDown.Fire || (D.auto && err <= 0) || err < -0.45) {           // miss the window and the orbit carries you past it anyway
+          D.doiErr = err; doiStar = Math.abs(err) < 0.07 ? 1 : 0;
+          D.stage = 'doiburn'; D.u = 0; keyDown.Fire = false;
+        }
+      } else if (st === 'doiburn') {
+        D.u += sdt / 24; D.prop -= MDOT * 0.25 * sdt; D.ang -= OMEGA * sdt; D.mAng -= OMEGA * sdt;
+        if (D.u >= 1) { D.stage = 'transfer'; D.u = 0; }
+      } else if (st === 'transfer') {
+        D.u = Math.min(1, D.u + sdt / 3560);                                 // ponytail: half a 110×15 km orbit, faked as a cosine
+        D.ang = DOI_ANG + D.doiErr - Math.PI * D.u; D.mAng -= OMEGA * sdt;
+        D.alt = PDI_ALT + (ORB_ALT - PDI_ALT) * (1 + Math.cos(Math.PI * D.u)) / 2;
+        if (D.u >= 1) {
+          D.stage = 'brake'; D.alt = PDI_ALT; D.vs = PDI_VS; D.vy = 0; D.pitch = 1.45; D.thr = 1;
+          D.s = THREE.MathUtils.clamp(PDI_S + D.doiErr * MOON_R * 0.3, 240000, 820000);
+          mother.visible = false;
+        }
+      } else if (st === 'brake' || st === 'final') {
+        const a = THRUST_N / (LM_DRY + D.prop) * (D.prop > 0 ? D.thr : 0);
+        D.vy += (a * Math.cos(D.pitch) - G_MOON) * sdt;
+        D.vs -= a * Math.sin(D.pitch) * sdt;
+        D.alt += D.vy * sdt; D.s -= D.vs * sdt; D.x += D.vx * sdt;
+        D.prop = Math.max(0, D.prop - MDOT * D.thr * sdt);
+        if (st === 'brake') {
+          D.ang = Math.max(D.s, 0) / MOON_R;
+          if (D.alt <= GATE_ALT) {
+            gateStar = (Math.abs(D.s - GATE_S) < 2500 && Math.abs(D.vs - GATE_VS) < 70) ? 1 : 0;
+            D.stage = 'gate'; fade(1, () => { startFinal(); fade(0); });
+          }
+        } else {
+          if (!D.hard && D.auto && D.alt < 150) { D.auto = false; $('autoBtn').classList.remove('on'); }
+          if (D.alt <= 0) { D.alt = 0; lmPos(dTmp); lm.position.copy(dTmp); touchdown(); }
+        }
+      }
+      // ---- camera
+      if (st === 'final') {
+        lmPos(dTmp); lm.position.copy(dTmp);
+        dUp.copy(landN).applyAxisAngle(east, -D.pitch * 0.6);                // lean into the braking attitude
+        lm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dUp);
+        target.scale.setScalar(1 + D.alt / 900);                             // keep the ring findable from altitude
+        lm.scale.setScalar(THREE.MathUtils.clamp(0.22 + D.alt / 2200, 0.22, 1));   // near the ground the boulders set the scale; far away the LM has to stay visible
+        rig.position.copy(dTmp).addScaledVector(landN, 0.30 + D.alt / MPU * 0.25).addScaledVector(north, 1.2 + D.alt / MPU * 0.25);
+        aimUp(dTmp, landN); camera.rotation.set(0, 0, 0);
+        if (D.alt < 60 && dust.material.opacity === 0) {                     // kick up dust on the last stretch
+          dust.material.opacity = 0.75;
+          for (let i = 0; i < dustN; i++) { const a = Math.random() * Math.PI * 2;
+            dustVel[i].crossVectors(landN, new THREE.Vector3(Math.cos(a), 0, Math.sin(a))).normalize().multiplyScalar(0.3 + Math.random());
+            dustArr.set([dTmp.x, dTmp.y, dTmp.z], i * 3); }
+        }
+      } else {
+        arcPos(rig.position, D.alt, D.ang);
+        dUp.copy(rig.position).sub(MOON_POS).normalize();
+        arcPos(dTmp2, D.alt, D.ang - 0.02).sub(rig.position).normalize();    // direction of travel
+        if (mother.visible) {
+          arcPos(mother.position, ORB_ALT, D.mAng).addScaledVector(east, 0.5).addScaledVector(dUp, 0.12);
+          mother.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tmp.copy(mother.position).sub(MOON_POS).normalize());
+        }
+        const dip = Math.acos(MOON_R / (MOON_R + Math.max(D.alt, 0)));          // look past the horizon, which rises as we descend
+        if (st === 'undock' || st === 'orbitwait') dTmp.copy(mother.position);  // keep the command module in shot while it is still there
+        else dTmp.copy(rig.position).addScaledVector(dTmp2, 6).addScaledVector(dUp, -6 * Math.tan(dip + 0.30));
+        aimUp(dTmp, dUp); camera.rotation.set(-pitch, -yaw, 0, 'YXZ');
+        orbitLamp.position.copy(rig.position);
+        orbitLamp.intensity = 1.7 * THREE.MathUtils.clamp(D.alt / 60000, 0, 1); // the orbit-tour fill blows out the surface up close
+      }
+      flame.visible = false;
+      // ---- HUD
+      const fuel = D.prop / LM_PROP * 100;
+      let h = D.ts > 1 ? `<span class="ts">⏩ ×${D.ts}</span><br>` : '';
+      if (st === 'undock') h += `🔻 <b>母船から分離</b><br><span style="color:#8a9bb0;font-size:12px">指令船は高度 110 km で待ちます</span>`;
+      else if (st === 'orbitwait') {
+        const err = (D.ang - DOI_ANG) * 180 / Math.PI;
+        h += `高度 <b>${(D.alt / 1000).toFixed(0)} km</b>　周回中<br>` +
+             `噴射ポイントまで <b class="${Math.abs(err) < 4 ? 'ok' : 'warn'}">${err.toFixed(1)}°</b><br>` +
+             `<span style="color:#8a9bb0;font-size:12px">${D.auto ? '自動でタイミングを取ります' : '0° になったら Space / 噴射ボタン'}</span>`;
+      } else if (st === 'doiburn') h += `🔥 <b>降下噴射 DOI</b>　${Math.round(D.u * 100)}%<br><span style="color:#8a9bb0;font-size:12px">近月点を 15 km まで下げています</span>`;
+      else if (st === 'transfer') h += `降下軌道を惰性で滑空中<br>高度 <b>${(D.alt / 1000).toFixed(1)} km</b>　着火まで <b>${Math.round((1 - D.u) * 100)}%</b>`;
+      else if (st === 'gate') h += `高度 2,300 m 通過 — 最終降下へ`;
+      else {
+        const v = Math.abs(D.vy), tc = Math.round(D.thr * 100), tt = Math.round(g.thr * 100);
+        const pc = Math.round(D.pitch * 180 / Math.PI), pta = Math.round(g.pitch * 180 / Math.PI);
+        h += `高度 <b>${D.alt > 3000 ? (D.alt / 1000).toFixed(1) + ' km' : Math.max(0, D.alt).toFixed(0) + ' m'}</b>　` +
+             `<b class="${v < 1.5 ? 'ok' : v < 3 ? 'warn' : 'bad'}">${D.vy < 0 ? '↓' : '↑'}${v.toFixed(1)} m/s</b><br>` +
+             `前進 <b>${D.vs.toFixed(0)} m/s</b>　目標まで <b>${D.s > 2000 ? (D.s / 1000).toFixed(1) + ' km' : D.s.toFixed(0) + ' m'}</b><br>` +
+             (st === 'final' ? `横ずれ <b class="${Math.abs(D.x) < 25 ? 'ok' : 'warn'}">${D.x.toFixed(0)} m</b><br>` : '') +
+             `推力 <span class="bar"><i style="width:${tc}%"></i></span> ${tc}%　<span class="dir">▶ ${tt}%</span><br>` +
+             `機首角 <b class="${Math.abs(pc - pta) < 6 ? 'ok' : 'warn'}">${pc}°</b>　<span class="dir">▶ ${pta}°</span><br>` +
+             `燃料 <span class="bar"><i style="width:${fuel}%"></i></span> ${fuel.toFixed(0)}%<br>` +
+             `<span style="color:#8a9bb0;font-size:12px">${D.auto ? '自動操縦中' : '↑↓ 推力　←→ 機首角' + (st === 'final' ? '　A / D 横移動' : '')}</span>`;
+      }
+      $('dhud').innerHTML = h;
     }
     if (dust.material.opacity > 0) { for (let i = 0; i < dustN; i++) { dustArr[i * 3] += dustVel[i].x * dt; dustArr[i * 3 + 1] += dustVel[i].y * dt; dustArr[i * 3 + 2] += dustVel[i].z * dt; dustVel[i].addScaledVector(landN, -0.8 * dt); }
       dustGeo.attributes.position.needsUpdate = true; dust.material.opacity = Math.max(0, dust.material.opacity - dt * 0.25); }
