@@ -2,22 +2,23 @@
 <html lang="ja">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>うちゅう旅行 — 地球 ⇄ 月</title>
+<title>Space Journey — Earth ⇄ Moon</title>
 <style>
-  :root { --bg:#05060f; --card:#12162a; --acc:#ffcc33; --acc2:#5ad1ff; --txt:#f2f4ff; }
+  :root { --bg:#05060f; --card:#12162a; --acc:#e6b84a; --acc2:#5ad1ff; --txt:#f2f4ff; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--txt); font-family:"Hiragino Maru Gothic ProN","Rounded Mplus 1c","Noto Sans JP",system-ui,sans-serif; overflow:hidden; }
   canvas.gl { position:fixed; inset:0; }
   .screen { position:fixed; inset:0; display:none; overflow:auto; z-index:5; }
   .screen.on { display:block; }
+  #s-ticket, #s-print, #s-photo { background:radial-gradient(ellipse at 50% 30%, #141a33 0%, #05060f 70%); }
   .center { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; gap:18px; }
-  h1 { font-size:34px; margin:0; color:var(--acc); text-shadow:0 2px 12px #000; }
+  h1 { font-size:30px; margin:0; color:#fff; letter-spacing:1px; font-weight:600; }
   h2 { font-size:22px; margin:0; }
   .card { background:var(--card); border:2px solid #2b3358; border-radius:18px; padding:18px 22px; box-shadow:0 10px 40px #0008; }
   .row { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; align-items:center; }
-  button { font:inherit; font-size:18px; padding:12px 22px; border-radius:14px; border:none; cursor:pointer; background:var(--acc); color:#222; font-weight:bold; box-shadow:0 4px 0 #b08a00; }
-  button:active { transform:translateY(3px); box-shadow:none; }
-  button.sec { background:#2b3358; color:#fff; box-shadow:0 4px 0 #171b30; }
+  button { font:inherit; font-size:17px; padding:12px 22px; border-radius:10px; border:1px solid #6b5a1e; cursor:pointer; background:var(--acc); color:#1a1a1a; font-weight:600; }
+  button:active { filter:brightness(.9); }
+  button.sec { background:#242a44; color:#fff; border-color:#3a4370; }
   button.big { font-size:26px; padding:18px 40px; }
   button:disabled { opacity:.4; cursor:not-allowed; }
   input[type=text] { font:inherit; font-size:18px; padding:10px 14px; border-radius:10px; border:2px solid #2b3358; background:#0b0e1c; color:#fff; width:200px; }
@@ -75,44 +76,44 @@
 
 <!-- ① チケット -->
 <div class="screen on" id="s-ticket"><div class="center">
-  <h1>🚀 うちゅう旅行 チケットうりば</h1>
+  <h1>EARTH → MOON　搭乗チケット</h1>
   <div class="row">
-    <div class="card dest sel" data-d="moon"><div class="ico">🌙</div><h2>月</h2><div class="info">3日 / 38万km</div></div>
-    <div class="card dest lock" data-d="mars"><div class="ico">🔴</div><h2>火星</h2><div class="info">🔒 月に行ったらひらく</div></div>
-    <div class="card dest lock" data-d="jupiter"><div class="ico">🟠</div><h2>木星</h2><div class="info">🔒 火星に行ったらひらく</div></div>
+    <div class="card dest sel" data-d="moon"><div class="ico">🌑</div><h2>月 MOON</h2><div class="info">3日 / 384,400 km</div></div>
+    <div class="card dest lock" data-d="mars"><div class="ico">🟤</div><h2>火星 MARS</h2><div class="info">月のミッション後に解放</div></div>
+    <div class="card dest lock" data-d="jupiter"><div class="ico">🟠</div><h2>木星 JUPITER</h2><div class="info">火星のミッション後に解放</div></div>
   </div>
-  <div class="card"><h2>なんにんで行く？</h2>
+  <div class="card"><h2>搭乗人数</h2>
     <div class="counter"><button id="minus">−</button><span id="npax">2</span><button id="plus">＋</button></div>
     <div class="names" id="names"></div>
   </div>
-  <button class="big" id="buy">🎫 チケットを買う</button>
+  <button class="big" id="buy">チケットを発行</button>
 </div></div>
 
 <!-- ② チケット印刷 -->
 <div class="screen" id="s-print"><div class="center">
-  <h1>🎫 チケットができました！</h1>
+  <h1>搭乗チケット</h1>
   <div id="print-area"></div>
-  <div class="row"><button class="sec" id="print">🖨 印刷する</button><button id="toPhoto">📷 うちゅう服で写真をとる（スキップOK）</button></div>
+  <div class="row"><button class="sec" id="print">印刷する</button><button id="toPhoto">宇宙服で記念写真（スキップ可）</button></div>
 </div></div>
 
 <!-- ③ 写真 -->
 <div class="screen" id="s-photo"><div class="center">
-  <h1>👨‍🚀 うちゅう服で写真</h1>
+  <h1>クルー写真</h1>
   <div class="card"><h2 id="photoWho">1人目</h2>
-    <div class="row"><input type="file" id="file" accept="image/*"><button class="sec" id="cam">📹 カメラでとる</button></div>
+    <div class="row"><input type="file" id="file" accept="image/*"><button class="sec" id="cam">カメラで撮影</button></div>
     <video id="v" playsinline muted style="display:none;width:240px;border-radius:12px"></video>
     <canvas id="suitCanvas" width="480" height="857" style="width:270px;height:482px"></canvas>
-    <div class="row"><button id="snap" style="display:none">📸 パシャ！</button><button class="sec" id="okPhoto">OK つぎの人へ</button></div>
+    <div class="row"><button id="snap" style="display:none">撮影</button><button class="sec" id="okPhoto">OK — 次のクルーへ</button></div>
   </div>
   <div class="thumbs" id="thumbs"></div>
-  <button class="big" id="board">🚀 ロケットにのる</button>
+  <button class="big" id="board">搭乗して発射準備へ</button>
 </div></div>
 
 <!-- ⑦ 着陸 / ⑧ 完了 -->
 <div class="screen" id="s-land"><div class="center"><div class="card" style="max-width:600px">
-  <h1>🌙 月にとうちゃく！</h1>
+  <h1>月面着陸</h1>
   <div class="stars" id="landStars"></div>
-  <h2>月のこと</h2>
+  <h2>月について</h2>
   <ul class="info" style="font-size:17px;line-height:1.9;text-align:left">
     <li>大きさ：直径 3,474 km（地球の 1/4）</li>
     <li>地球からのきょり：約 38万 km（ロケットで 3日）</li>
@@ -120,18 +121,18 @@
     <li>昼は 110℃、夜は −170℃ — 空気がないから</li>
     <li>1969年、アポロ11号で人間がはじめて歩いた</li>
   </ul>
-  <div class="row"><button class="big" id="goHome">🌍 地球にかえる</button></div>
+  <div class="row"><button class="big" id="goHome">地球へ帰還</button></div>
 </div></div></div>
 <div class="screen" id="s-done"><div class="center"><div class="card" style="text-align:center">
-  <h1>🎉 おかえりなさい！</h1><div class="stars" id="doneStars"></div>
-  <p id="doneMsg"></p><div class="row"><button class="big" id="again">🔴 つぎは火星へ（じゅんび中）</button><button class="sec" id="restart">もういちど</button></div>
+  <h1>ミッション完了 — 地球に帰還</h1><div class="stars" id="doneStars"></div>
+  <p id="doneMsg"></p><div class="row"><button class="big" id="again">次の目的地：火星（準備中）</button><button class="sec" id="restart">最初から</button></div>
 </div></div></div>
 
 <div class="hud" id="count"></div>
 <div class="hud" id="jhud"></div>
 <div class="hud" id="lhud"></div>
-<div class="hud" id="map"><div>🌍 <span style="float:right">🌙</span></div><div class="track"><div class="dot" id="mdot"></div></div><div id="mtxt"></div></div>
-<div class="hud" id="hint" style="display:none">ドラッグ／👆で窓の外を見まわせる</div>
+<div class="hud" id="map"><div>EARTH <span style="float:right">MOON</span></div><div class="track"><div class="dot" id="mdot"></div></div><div id="mtxt"></div></div>
+<div class="hud" id="hint" style="display:none">ドラッグで窓の外を見まわせます</div>
 <div class="card" id="quiz"><h2 id="qq"></h2><div class="opts" id="qo"></div></div>
 
 <script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }</script>
@@ -365,7 +366,7 @@ const QUIZ = [
 ];
 let quizIdx = 0, quizOpen = false, journeyT = 0;
 const askQuiz = () => {
-  const q = QUIZ[quizIdx]; quizOpen = true; $('qq').textContent = `⭐ ミッション${quizIdx + 1}：${q.q}`;
+  const q = QUIZ[quizIdx]; quizOpen = true; $('qq').textContent = `MISSION ${quizIdx + 1}　${q.q}`;
   $('qo').innerHTML = q.a.map((t, i) => `<button data-i="${i}">${t}</button>`).join('');
   $('qo').querySelectorAll('button').forEach(b => b.onclick = () => { const ok = +b.dataset.i === q.ok; b.classList.add(ok ? 'ok' : 'ng');
     if (ok) { state.stars++; $('qo').querySelectorAll('button').forEach(x => x.disabled = true); setTimeout(() => { $('quiz').style.display = 'none'; quizOpen = false; quizIdx++; }, 900); } });
@@ -423,7 +424,7 @@ function animate() {
 
   if (phase === 'count') {
     const n = 10 - Math.floor(pt);
-    $('count').textContent = n > 0 ? n : 'LIFTOFF! 🔥';
+    $('count').textContent = n > 0 ? n : 'LIFTOFF';
     if (pt > 8.5) { flame.visible = true; flame.scale.set(0.45 + Math.random() * .15, 0.9 + Math.random() * .3, 1); rig.position.x += (Math.random() - .5) * .01; }
     stepSmoke(dt, pt > 8.5);
     if (pt >= 11) { phase = 'launch'; pt = 0; $('count').style.display = 'none'; }
@@ -453,15 +454,15 @@ function animate() {
     dome.material.opacity = 0;
     const day = (t * 3).toFixed(1), km = Math.round(t * 384400 / 1000) * 1000;
     $('jhud').innerHTML = phase === 'fly'
-      ? `🗓 <b>${day}日目</b> / 3日<br>📏 地球から <b>${km.toLocaleString()} km</b><br>${stars()}<br><button id="ff" style="font-size:13px;padding:4px 10px">⏩ ${state.speed}×</button>`
-      : `🌍 地球へ かえっています…<br>${stars()}`;
+      ? `<b>DAY ${day}</b> / 3<br>地球から <b>${km.toLocaleString()} km</b><br>${stars()}<br><button id="ff" style="font-size:13px;padding:4px 10px">速度 ${state.speed}×</button>`
+      : `地球へ帰還中<br>${stars()}`;
     const ff = $('ff'); if (ff) ff.onclick = () => { state.speed = state.speed === 1 ? 3 : state.speed === 3 ? 8 : 1; };
     drawScreen(day, km, phase === 'fly' ? t : 1 - t, Math.round(3800 + 20000 * Math.abs(Math.cos(t * Math.PI))));
     $('mdot').style.left = (phase === 'fly' ? t : 1 - t) * 100 + '%'; $('mtxt').textContent = `${Math.round((phase === 'fly' ? t : 1 - t) * 100)}%`;
     if (phase === 'fly' && !quizOpen && quizIdx < 3 && t > [0.2, 0.5, 0.8][quizIdx]) askQuiz();
     if (phase === 'fly' && t >= 1) { fade(1, () => { startLanding(); fade(0); }); phase = 'wait'; }
     if (phase === 'home' && t >= 1) { phase = 'done'; $('jhud').style.display = 'none'; cockpit.visible = false; lookOn = false; rig.position.set(600, R_E + 900, 1600); aim(0, 0, 0); camera.rotation.set(0, 0, 0);
-      $('doneStars').textContent = stars(); $('doneMsg').textContent = `${state.pax}人のうちゅうひこうし、月の旅 だいせいこう！ ミッション ${state.stars}/3 クリア`;
+      $('doneStars').textContent = stars(); $('doneMsg').textContent = `クルー ${state.pax}名、月往復ミッション完了。ミッション達成 ${state.stars}/3`;
       try { localStorage.setItem('unlock', 'mars'); } catch {} show('s-done'); }
   }
   if (phase === 'land') {
