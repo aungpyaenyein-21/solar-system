@@ -486,7 +486,7 @@ const updateScreens = (rt, day, km, pct, spd, roll, pitchA) => {
 
 // ---- cockpit: downloaded model (Sketchfab "Sci-fi Spaceship Cockpit 02" by NotARealStudio, CC-BY 4.0),
 // compressed to 1.1 MB with gltf-transform (1k webp textures + draco).
-const EYE = new THREE.Vector3(0, 1.50, -0.24);      // pilot's eye inside the model (model faces +Z); sits high and back so the canopy, not the console, fills the view
+const EYE = new THREE.Vector3(0, 1.53, -0.18);      // pilot's eye inside the model (model faces +Z); sits high and back so the canopy, not the console, fills the view
 gltf.load('assets/cockpit.glb', g => {
   const m = g.scene;
   m.rotation.y = Math.PI;                            // model +Z forward -> rig -Z (the camera's forward)
@@ -494,13 +494,16 @@ gltf.load('assets/cockpit.glb', g => {
   m.traverse(o => { if (o.isMesh && /Neck_Plastic/.test(o.name)) o.visible = false; });   // single seat: hide it, nobody sits in shot
   cockpit.add(m);
   // live instruments laid over the model's console (model space; the parent rotation carries them)
-  // The model's displays are baked into its texture atlas, so lay live panels just in front of them.
-  // Positions are in MODEL space (measured once by raycasting the screens), so they stay glued when EYE moves.
-  const put = (scr, x, y, z, w, h, tilt) => {
-    const q = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: scr.t, toneMapped: false }));
-    q.position.set(x, y, z); q.rotation.set(0, Math.PI, 0); q.rotateX(tilt); m.add(q); };
-  put(screens.nav, 0, 1.304, 0.774, 0.400, 0.105, -0.121);
-  put(screens.main, 0, 1.239, 0.453, 0.385, 0.101, -0.328);
+  // The model's displays are baked into its texture atlas, so lay live panels on the two real display
+  // surfaces, measured off the geometry: an upper band tilted 45° (normal 0,0.70,−0.71) and a flat
+  // horizontal panel. Model-space, so they stay glued to the screens wherever EYE moves.
+  const panel = (scr, w, h) => new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+    new THREE.MeshBasicMaterial({ map: scr.t, toneMapped: false }));
+  const upper = panel(screens.nav, 0.45, 0.123);
+  upper.position.set(0, 1.292, 0.782); upper.rotation.set(0, Math.PI, 0); upper.rotateX(-0.778);
+  const lower = panel(screens.main, 0.62, 0.17);
+  lower.position.set(0, 1.236, 0.565); lower.rotateX(-Math.PI / 2); lower.rotateZ(Math.PI);
+  m.add(upper, lower);
   const key = new THREE.PointLight(0xcfe0ff, 2.2, 6, 1.6); key.position.set(0, 1.55, 0.2); m.add(key);
   const glowL = new THREE.PointLight(0x66aaff, 1.4, 3, 1.6); glowL.position.set(0, 1.30, 0.75); m.add(glowL);
 }, undefined, () => console.warn('cockpit model failed'));
@@ -575,7 +578,7 @@ const startCockpit = () => {
   phase = 'fly'; pt = 0; journeyT = 0; cockpit.visible = true; lookOn = true; flame.visible = false; rocket.visible = false;
   $('count').style.display = 'none'; $('jhud').style.display = 'block'; $('map').style.display = 'block'; $('hint').style.display = 'block'; $('lhud').style.display = 'none';
   scene.fog.near = 1e6; scene.fog.far = 2e6; deck.visible = false;
-  rig.position.copy(JOURNEY_FROM); camera.position.set(0, 0, 0); yaw = 0; pitch = -0.11; swing = 1;   // sit the console low in frame; the canopy gets the screen   // window starts on Earth, then the craft swings round to the Moon
+  rig.position.copy(JOURNEY_FROM); camera.position.set(0, 0, 0); yaw = 0; pitch = -0.05; swing = 1;   // sit the console low in frame; the canopy gets the screen   // window starts on Earth, then the craft swings round to the Moon
 };
 const startLanding = () => {
   phase = 'land'; pt = 0; cockpit.visible = false; lookOn = false; lm.visible = true; $('quiz').style.display = 'none'; quizOpen = false;
