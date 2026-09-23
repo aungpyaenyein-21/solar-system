@@ -56,6 +56,11 @@
   #jhud b { color:var(--acc); }
   #lhud { top:14px; left:14px; background:#000a; padding:10px 16px; border-radius:12px; font-size:16px; line-height:1.7; display:none; }
   #lhud b { color:var(--acc); }
+  #cap { left:0; right:0; bottom:74px; text-align:center; display:none; opacity:0; transition:opacity 1.4s; }
+  #cap b { display:block; font-size:30px; color:#fff; letter-spacing:6px; text-shadow:0 2px 18px #000; }
+  #cap span { font-size:14px; color:#bcd; letter-spacing:2px; }
+  #shot { position:fixed; right:14px; bottom:14px; z-index:6; display:none; font-size:14px; padding:9px 16px; }
+  body.clean #cap, body.clean #shot { display:none !important; }
   #map { top:14px; right:14px; background:#000a; padding:10px 16px; border-radius:12px; font-size:15px; display:none; min-width:220px; }
   #map .track { height:8px; background:#2b3358; border-radius:4px; position:relative; margin:8px 0; }
   #map .dot { position:absolute; top:-6px; width:20px; height:20px; border-radius:50%; background:var(--acc); transform:translateX(-50%); }
@@ -134,6 +139,8 @@
 <div class="hud" id="count"></div>
 <div class="hud" id="jhud"></div>
 <div class="hud" id="lhud"></div>
+<div class="hud" id="cap"><b>地球</b><span>直径 12,742 km — わたしたちの家</span></div>
+<button id="shot">記念写真を保存</button>
 <div class="hud" id="map"><div>EARTH <span style="float:right">MOON</span></div><div class="track"><div class="dot" id="mdot"></div></div><div id="mtxt"></div></div>
 <div class="hud" id="hint" style="display:none">ドラッグで窓の外を見まわせます</div>
 <div class="card" id="quiz"><h2 id="qq"></h2><div class="opts" id="qo"></div></div>
@@ -179,6 +186,8 @@ const ticketHTML = i => `<div class="ticket"><div class="stub"><div>SEAT</div><d
 const renderTickets = () => $('print-area').innerHTML = Array.from({ length: state.pax }, (_, i) => ticketHTML(i)).join('');
 $('buy').onclick = () => { renderTickets(); show('s-print'); };
 $('print').onclick = () => window.print();
+let wantShot = false;
+$('shot').onclick = () => wantShot = true;
 
 // ---------- ③ photo (2D spacesuit composite, stays in browser) ----------
 let cur = 0, src = null, stream = null;
@@ -442,14 +451,14 @@ const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xbbbbb
 
 // look-around (drag) inside cockpit
 let yaw = 0, pitch = 0, drag = null, lookOn = false;
-addEventListener('pointerdown', e => { if (lookOn && e.target === $('gl')) drag = [e.clientX, e.clientY, yaw, pitch]; });
+addEventListener('pointerdown', e => { if (lookOn && e.target === $('gl')) { drag = [e.clientX, e.clientY, yaw, pitch]; swing = 0; } });
 addEventListener('pointermove', e => { if (!drag) return; yaw = drag[2] + (e.clientX - drag[0]) * 0.004; pitch = THREE.MathUtils.clamp(drag[3] + (e.clientY - drag[1]) * 0.004, -0.8, 0.8); });
 addEventListener('pointerup', () => drag = null);
 
 // ---------- phases ----------
 let phase = 'prep', pt = 0;          // pt = seconds in phase
 const fade = (o, cb) => { $('fade').style.opacity = o; if (cb) setTimeout(cb, 1200); };
-const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3(), rocketW = new THREE.Vector3(), rocketTmp = new THREE.Vector3();
+const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3(), rocketW = new THREE.Vector3(), rocketTmp = new THREE.Vector3(), aimTmp = new THREE.Vector3();
 
 const startLaunch = () => {
   stopCam(); show(null); buildSeats(); phase = 'count'; pt = 0;
@@ -462,7 +471,7 @@ const startLaunch = () => {
 };
 $('board').disabled = !assetsReady; if (!assetsReady) $('board').textContent = '読み込み中…';
 $('board').onclick = startLaunch;
-window.__go = { launch: t => { show(null); buildSeats(); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); buildSeats(); startCockpit(); }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
+window.__go = { depart: () => { show(null); buildSeats(); startLaunch(); startDepart(); }, launch: t => { show(null); buildSeats(); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); buildSeats(); startCockpit(); }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
 
 // quizzes (mission stamps)
 const QUIZ = [
@@ -480,12 +489,23 @@ const askQuiz = () => {
 };
 const stars = () => '⭐'.repeat(state.stars) + '☆'.repeat(3 - state.stars);
 
+let swing = 0;                               // 1 → 0: auto-pan from Earth round to the Moon
+const DEPART_R = 3000;                       // ~19,000 km out: the whole globe fits the frame
+const JOURNEY_FROM = PADN.clone().multiplyScalar(DEPART_R);
 const JOURNEY_S = 180;                       // 3 days = 3 minutes at 1×
+const departFrom = new THREE.Vector3();
+const startDepart = () => {                  // ④ camera lets the rocket go and backs off until Earth is whole
+  phase = 'depart'; pt = 0; departFrom.copy(rig.position);
+  flame.visible = false; trail.visible = false;
+  $('lhud').style.display = 'none'; $('cap').style.display = 'block'; $('shot').style.display = 'block';
+  setTimeout(() => $('cap').style.opacity = 1, 13000);
+};
 const startCockpit = () => {
+  $('cap').style.display = 'none'; $('cap').style.opacity = 0; $('shot').style.display = 'none';
   phase = 'fly'; pt = 0; journeyT = 0; cockpit.visible = true; lookOn = true; flame.visible = false; rocket.visible = false;
   $('count').style.display = 'none'; $('jhud').style.display = 'block'; $('map').style.display = 'block'; $('hint').style.display = 'block'; $('lhud').style.display = 'none';
   scene.fog.near = 1e6; scene.fog.far = 2e6; deck.visible = false;
-  rig.position.copy(PADN).multiplyScalar(R_E + 120); camera.position.set(0, 0, 0); yaw = 0; pitch = 0.32;   // start looking slightly down: Earth's limb fills the lower window
+  rig.position.copy(JOURNEY_FROM); camera.position.set(0, 0, 0); yaw = 0; pitch = 0; swing = 1;   // window starts on Earth, then the craft swings round to the Moon
 };
 const startLanding = () => {
   phase = 'land'; pt = 0; cockpit.visible = false; lookOn = false; lm.visible = true; $('quiz').style.display = 'none'; quizOpen = false;
@@ -562,13 +582,25 @@ function animate() {
     groundCap.material.opacity = THREE.MathUtils.clamp(1 - e / 30, 0, 1); groundCap.visible = groundCap.material.opacity > 0;   // hand the view over to the real Earth map
     $('lhud').style.display = 'block';
     $('lhud').innerHTML = `高度 <b>${altKm.toFixed(altKm < 10 ? 1 : 0)} km</b><br>速度 <b>${spd.toLocaleString()} km/h</b><br><span style="color:#9ab">${altKm < 12 ? '対流圏（雲の層）' : altKm < 50 ? '成層圏' : altKm < 100 ? '中間圏 — 空が黒くなる' : '宇宙（カーマン・ライン 100 km を通過）'}</span>`;
-    if (pt > T) { fade(1, () => { startCockpit(); trail.visible = false; fade(0); }); phase = 'wait'; }
+    if (pt > T) startDepart();
+  }
+  if (phase === 'depart') {
+    const T = 22, k = THREE.MathUtils.clamp(pt / T, 0, 1), e = k * k * (3 - 2 * k);   // ease in and out: the globe opens up steadily
+    rig.position.lerpVectors(departFrom, JOURNEY_FROM, e);
+    aim(0, 0, 0); camera.rotation.set(0, 0, 0);
+    rocket.position.y += dt * 1.2; rocket.position.x += dt * 0.35;                        // still coasting, now a speck
+    if (pt > T + 8) { fade(1, () => { startCockpit(); fade(0); }); phase = 'wait'; }
   }
   if (phase === 'fly' || phase === 'home') {
     if (!quizOpen) journeyT += dt * state.speed / JOURNEY_S;
     const t = THREE.MathUtils.clamp(journeyT, 0, 1), s = t * t * (3 - 2 * t);
-    const from = tmp.copy(PADN).multiplyScalar(R_E + 120), to = tmp2.copy(MOON_POS).add(new THREE.Vector3(-0.16, 0.1, 0.98).normalize().multiplyScalar(R_M + 40));
-    if (phase === 'fly') { rig.position.lerpVectors(from, to, s); aim(MOON_POS); }
+    const from = tmp.copy(JOURNEY_FROM), to = tmp2.copy(MOON_POS).add(new THREE.Vector3(-0.16, 0.1, 0.98).normalize().multiplyScalar(R_M + 40));
+    if (phase === 'fly') {
+      rig.position.lerpVectors(from, to, s);
+      if (swing > 0 && !drag) swing = Math.max(0, swing - dt / 12);
+      const u = swing * swing * (3.0 - 2.0 * swing);                 // 1 = aimed at Earth, 0 = aimed at the Moon
+      aimTmp.copy(MOON_POS).multiplyScalar(1 - u); aim(aimTmp.x, aimTmp.y, aimTmp.z);
+    }
     else { rig.position.lerpVectors(to, from, s); aim(0, 0, 0); }
     camera.rotation.set(-pitch, -yaw, 0, 'YXZ');
     dome.material.opacity = 0;
@@ -599,7 +631,10 @@ function animate() {
   }
   if (phase === 'landed') { rig.position.copy(landPt).addScaledVector(landN, 0.45).add(tmp.crossVectors(landN, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(2.6 + 0.5 * Math.sin(pt * .3))); aimUp(lm.position, landN); }
 
-  renderer.render(scene, camera); labelR.render(scene, camera);
+  renderer.render(scene, camera);
+  if (wantShot) { wantShot = false; const a = document.createElement('a');   // the buffer must be read in the same frame it was drawn
+    a.download = 'earth.png'; a.href = renderer.domElement.toDataURL('image/png'); a.click(); }
+  labelR.render(scene, camera);
   requestAnimationFrame(animate);
 }
 animate();
