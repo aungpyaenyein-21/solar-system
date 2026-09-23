@@ -273,7 +273,8 @@ flame.position.y = -0.12; flame.scale.set(0.45, 0.9, 1); flame.visible = false; 
 
 // cockpit (built from primitives, rides with the camera rig)
 const rig = new THREE.Object3D(); scene.add(rig); rig.add(camera);
-const aim = (x, y, z) => { rig.lookAt(x, y, z); rig.rotateY(Math.PI); };   // Object3D.lookAt faces +Z; the camera looks down -Z
+const aim = (x, y, z) => { rig.lookAt(x, y, z); rig.rotateY(Math.PI); };
+const aimUp = (target, up) => { rig.up.copy(up); rig.lookAt(target); rig.rotateY(Math.PI); rig.up.set(0, 1, 0); };
 const cockpit = new THREE.Group(); cockpit.visible = false; rig.add(cockpit);
 scene.environment = sky;                                        // reflections on the hull
 const screenCv = document.createElement('canvas'); screenCv.width = 1024; screenCv.height = 256;
@@ -384,9 +385,32 @@ const startLanding = () => {
   // surface point on the moon facing earth-ish; rig = side camera
   landPt.copy(MOON_POS).add(tmp.set(0.8, 0.35, 0.5).normalize().multiplyScalar(R_M));   // sunlit side
   landN.copy(landPt).sub(MOON_POS).normalize();
+  if (!terrain) buildTerrain();
   for (let i = 0; i < dustN; i++) { dustArr.set([landPt.x, landPt.y, landPt.z], i * 3); dustVel.push(new THREE.Vector3()); }
 };
 const landPt = new THREE.Vector3(), landN = new THREE.Vector3();
+let terrain = null;
+const buildTerrain = () => {                                     // 30×30 u cratered patch tangent to the Moon at the landing site
+  const N = 160, geo = new THREE.PlaneGeometry(30, 30, N, N); geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position, craters = [];
+  for (let i = 0; i < 26; i++) { const r = 0.6 + Math.random() * 3.2; let cx, cz; do { cx = (Math.random() - .5) * 28; cz = (Math.random() - .5) * 28; } while (Math.hypot(cx, cz) < 3 + r); craters.push([cx, cz, r, r * (0.18 + Math.random() * 0.12)]); }
+  const hash = (x, z) => { const v = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return v - Math.floor(v); };
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i); let h = 0;
+    for (const [cx, cz, r, d] of craters) { const q = Math.hypot(x - cx, z - cz) / r; if (q < 1) h -= d * (1 - q * q) * (1 - q * q); const e = Math.exp(-((q - 1) * (q - 1)) / 0.02); h += d * 0.35 * e; }
+    h += (hash(Math.floor(x * 2), Math.floor(z * 2)) - .5) * 0.05 + (hash(Math.floor(x * 9), Math.floor(z * 9)) - .5) * 0.012;
+    const edge = THREE.MathUtils.smoothstep(Math.hypot(x, z), 11, 15); h *= 1 - edge;       // flatten the rim so it meets the sphere
+    pos.setY(i, h);
+  }
+  geo.computeVertexNormals();
+  const mt = tex(`${HD}/2k_moon.jpg`); mt.wrapS = mt.wrapT = THREE.RepeatWrapping; mt.repeat.set(6, 6);
+  const bm = loader.load('https://cdn.jsdelivr.net/gh/jeromeetienne/threex.planets@master/images/moonbump1k.jpg'); bm.wrapS = bm.wrapT = THREE.RepeatWrapping; bm.repeat.set(6, 6);
+  terrain = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: mt, bumpMap: bm, bumpScale: 0.05, roughness: 1, color: 0xbdbdbd }));
+  terrain.position.copy(landPt).addScaledVector(landN, 0.03); terrain.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), landN);
+  scene.add(terrain);
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.32, 32), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false }));
+  shadow.position.copy(landPt).addScaledVector(landN, 0.05); shadow.quaternion.copy(terrain.quaternion); scene.add(shadow); terrain.userData.shadow = shadow;
+};
 $('goHome').onclick = () => { fade(1, () => { phase = 'home'; pt = 0; lm.visible = false; dust.material.opacity = 0; cockpit.visible = true; lookOn = true; show(null); $('jhud').style.display = 'block'; fade(0); }); };
 $('again').onclick = () => alert('火星はこれからつくります 🚧');
 $('restart').onclick = () => location.reload();
@@ -444,14 +468,15 @@ function animate() {
     const T = 10, k = THREE.MathUtils.clamp(pt / T, 0, 1), h = (1 - k) * (1 - k) * 5;    // descend 5 -> 0
     lm.position.copy(landPt).addScaledVector(landN, h); lm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), landN);
     // camera: hover beside, slightly above, watching the LM
-    rig.position.copy(landPt).addScaledVector(landN, 0.5 + h * 0.5).add(tmp.crossVectors(landN, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(1.8));
-    aim(lm.position); camera.rotation.set(0, 0, 0);
+    rig.position.copy(landPt).addScaledVector(landN, 0.45 + h * 0.35).add(tmp.crossVectors(landN, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(2.6));
+    terrain.userData.shadow.material.opacity = 0.45 * THREE.MathUtils.clamp(1 - h / 3, 0, 1);
+    aimUp(lm.position, landN); camera.rotation.set(0, 0, 0);
     if (k > 0.85 && dust.material.opacity === 0) { dust.material.opacity = 0.9; for (let i = 0; i < dustN; i++) { const a = Math.random() * Math.PI * 2; dustVel[i].crossVectors(landN, new THREE.Vector3(Math.cos(a), 0, Math.sin(a))).normalize().multiplyScalar(0.4 + Math.random() * 1.2).addScaledVector(landN, Math.random() * 0.6); } }
     if (dust.material.opacity > 0) { for (let i = 0; i < dustN; i++) { dustArr[i * 3] += dustVel[i].x * dt; dustArr[i * 3 + 1] += dustVel[i].y * dt; dustArr[i * 3 + 2] += dustVel[i].z * dt; dustVel[i].addScaledVector(landN, -1.5 * dt); } dustGeo.attributes.position.needsUpdate = true; dust.material.opacity = Math.max(0, dust.material.opacity - dt * 0.35); }
     if (k >= 1 && pt < T + 0.4) rig.position.y += (Math.random() - .5) * 0.05;   // touchdown shake
     if (pt > T + 2.5) { phase = 'landed'; $('landStars').textContent = stars(); show('s-land'); }
   }
-  if (phase === 'landed') { rig.position.copy(landPt).addScaledVector(landN, 0.5).add(tmp.crossVectors(landN, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(1.8 + 0.4 * Math.sin(pt * .3))); aim(lm.position); }
+  if (phase === 'landed') { rig.position.copy(landPt).addScaledVector(landN, 0.45).add(tmp.crossVectors(landN, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(2.6 + 0.5 * Math.sin(pt * .3))); aimUp(lm.position, landN); }
 
   renderer.render(scene, camera); labelR.render(scene, camera);
   requestAnimationFrame(animate);
