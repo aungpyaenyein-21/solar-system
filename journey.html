@@ -97,6 +97,7 @@
   </div>
   <button class="big" id="buy">チケットを発行</button>
   <button class="sec" id="skipTicket">▶▶ 操縦室をすぐ見る（打ち上げをスキップ）</button>
+  <div class="info" style="font-size:11px;opacity:.6;max-width:560px;text-align:center">Cockpit: “Sci-fi Spaceship Cockpit 02” by NotARealStudio (CC BY 4.0) · Rocket / LM / suit: NASA · Planet &amp; sky maps: Solar System Scope, NASA</div>
 </div></div>
 
 <!-- ② チケット印刷 -->
@@ -456,131 +457,59 @@ const drawNav = (g, w, h, d) => {
   g.textAlign = 'left'; g.fillStyle = '#cfe4ff'; g.font = '20px monospace';
   g.fillText(`DAY ${d.day}`, 16, 96); g.fillText(`${d.km.toLocaleString()} km`, 16, 122); g.fillText(`${d.spd.toLocaleString()} km/h`, 16, 148);
 };
+const at = (g, x, y, fn, w, h, d) => { g.save(); g.translate(x, y); fn(g, w, h, d); g.restore(); };
+// the model has two wide panels, so pack the gauges into strips that match their aspect (1024×280 ≈ 3.7:1)
 const screens = {
-  barsL: mkScreen(192, 176, drawBars), horizon: mkScreen(224, 176, drawHorizon), gaugeA: mkScreen(160, 160, drawGauge),
-  radar: mkScreen(256, 256, drawRadar), gaugeB: mkScreen(160, 160, drawGauge), barsR: mkScreen(192, 176, drawBars),
-  nav: mkScreen(256, 176, drawNav),
+  main: mkScreen(1024, 280, (g, w, h, d) => {
+    g.fillStyle = '#04070d'; g.fillRect(0, 0, w, h);
+    at(g, 6, 12, drawRadar, 256, 256, d);
+    at(g, 274, 40, drawHorizon, 268, 200, d);
+    at(g, 552, 40, drawGauge, 190, 200, { ...d, g: d.gv, lbl: 'VELOCITY' });
+    at(g, 752, 40, drawGauge, 190, 200, { ...d, g: d.gr, lbl: 'RANGE' });
+    at(g, 952, 40, drawBars, 66, 200, d);
+  }),
+  nav: mkScreen(1024, 280, (g, w, h, d) => {
+    g.fillStyle = '#04070d'; g.fillRect(0, 0, w, h);
+    at(g, 6, 8, drawNav, 500, 264, d);
+    at(g, 512, 8, drawBars, 250, 264, { ...d, seed: 2.2 });
+    at(g, 768, 8, drawGauge, 250, 264, { ...d, g: d.gr, lbl: 'RANGE' });
+  }),
 };
 const blips = Array.from({ length: 5 }, () => [Math.random() * 6.283, 0.25 + Math.random() * 0.65]);
+setTimeout(() => updateScreens(0, '0.0', 0, 0, 0, 0, 0), 0);   // never show a blank panel
 let scrT = 0;
 const updateScreens = (rt, day, km, pct, spd, roll, pitchA) => {
-  screens.barsL.draw({ t: rt, seed: 0 }); screens.barsR.draw({ t: rt, seed: 2.2 });
-  screens.horizon.draw({ roll, pitch: pitchA });
-  screens.gaugeA.draw({ g: THREE.MathUtils.clamp(spd / 40000, 0, 1), lbl: 'VELOCITY' });
-  screens.gaugeB.draw({ g: THREE.MathUtils.clamp(pct, 0, 1), lbl: 'RANGE' });
-  screens.radar.draw({ t: rt, blips });
-  screens.nav.draw({ day, km, pct, spd });
+  const d = { t: rt, seed: 0, roll, pitch: pitchA, blips, day, km, pct, spd,
+    gv: THREE.MathUtils.clamp(spd / 40000, 0, 1), gr: THREE.MathUtils.clamp(pct, 0, 1) };
+  screens.main.draw(d); screens.nav.draw(d);
 };
 
-// ---- structure: metal shell open at the front, panoramic glazing in the opening ----
-const hullMat = new THREE.MeshStandardMaterial({ color: 0x70767f, roughness: .42, metalness: .85, side: THREE.BackSide, envMapIntensity: .55 });
-const panelMat = new THREE.MeshStandardMaterial({ color: 0x353a43, roughness: .55, metalness: .65 });
-const darkMat = new THREE.MeshStandardMaterial({ color: 0x1b1f27, roughness: .6, metalness: .4 });
-const trimMat = new THREE.MeshStandardMaterial({ color: 0xb9c0cb, roughness: .28, metalness: .95 });
-const R_IN = 3.2, WIN_HALF = 75 * D2R, WIN_LO = -0.32, WIN_HI = 1.62;
-{
-  const back = new THREE.Mesh(new THREE.CylinderGeometry(R_IN, R_IN, 4.4, 64, 1, true, 255 * D2R, 210 * D2R), hullMat);
-  back.position.y = 0.1; cockpit.add(back);                                       // wall behind and to the sides
-  const lo = new THREE.Mesh(new THREE.CylinderGeometry(R_IN, R_IN, WIN_LO + 2.1, 48, 1, true, 105 * D2R, 150 * D2R), hullMat);
-  lo.position.y = (WIN_LO - 2.1) / 2; cockpit.add(lo);                             // front wall below the glass
-  const hi = new THREE.Mesh(new THREE.CylinderGeometry(R_IN, R_IN, 2.3 - WIN_HI, 48, 1, true, 105 * D2R, 150 * D2R), hullMat);
-  hi.position.y = (WIN_HI + 2.3) / 2; cockpit.add(hi);                             // brow above the glass
-  const roof = new THREE.Mesh(new THREE.CircleGeometry(R_IN, 64), panelMat); roof.rotation.x = Math.PI / 2; roof.position.y = 2.3; cockpit.add(roof);
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(R_IN, 64), darkMat); floor.rotation.x = -Math.PI / 2; floor.position.y = -2.1; cockpit.add(floor);
-  // mullions: 6 posts + 3 rails split the opening into 5 × 2 panes
-  const post = (th, y0, y1) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, y1 - y0, 0.26), trimMat);
-    m.position.set(Math.sin(th) * R_IN, (y0 + y1) / 2, -Math.cos(th) * R_IN); m.rotation.y = th; cockpit.add(m); };
-  for (let i = 0; i <= 5; i++) post(-WIN_HALF + (2 * WIN_HALF) * i / 5, WIN_LO, WIN_HI);
-  for (const y of [WIN_LO, (WIN_LO + WIN_HI) / 2 + 0.25, WIN_HI]) {
-    const rail = new THREE.Mesh(new THREE.TorusGeometry(R_IN, 0.055, 10, 80, 2 * WIN_HALF), trimMat);
-    rail.rotation.x = -Math.PI / 2; rail.rotation.z = -Math.PI / 2 - WIN_HALF; rail.position.y = y; cockpit.add(rail);
-  }
-  // faint glass sheen so the panes read as glazed
-  const glass = new THREE.Mesh(new THREE.CylinderGeometry(R_IN - 0.06, R_IN - 0.06, WIN_HI - WIN_LO, 48, 1, true, 105 * D2R, 150 * D2R),
-    new THREE.MeshBasicMaterial({ color: 0x9fd0ff, transparent: true, opacity: 0.045, side: THREE.BackSide, depthWrite: false }));
-  glass.position.y = (WIN_LO + WIN_HI) / 2; cockpit.add(glass);
-  // ceiling light strips
-  for (const th of [-0.5, 0, 0.5]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.03, 2.4), new THREE.MeshBasicMaterial({ color: 0xd6e8ff }));
-    l.position.set(Math.sin(th) * 1.5, 2.26, -Math.cos(th) * 1.5 + 1.2); cockpit.add(l); }
-  const key = new THREE.PointLight(0xdfe9ff, 5, 16, 1.7); key.position.set(0, 1.7, 0.6);
-  const fill = new THREE.PointLight(0xffd9a6, 3.2, 9, 1.7); fill.position.set(0, -0.5, -1.6);
-  cockpit.add(key, fill);
-}
+// ---- cockpit: downloaded model (Sketchfab "Sci-fi Spaceship Cockpit 02" by NotARealStudio, CC-BY 4.0),
+// compressed to 1.1 MB with gltf-transform (1k webp textures + draco).
+const EYE = new THREE.Vector3(0, 1.40, -0.02);      // pilot's eye inside the model, model faces +Z
+gltf.load('assets/cockpit.glb', g => {
+  const m = g.scene;
+  m.rotation.y = Math.PI;                            // model +Z forward -> rig -Z (the camera's forward)
+  m.position.set(EYE.x, -EYE.y, EYE.z);              // put the eye point on the rig origin
+  m.traverse(o => { if (o.isMesh && /Neck_Plastic/.test(o.name)) o.visible = false; });   // single seat: hide it, nobody sits in shot
+  cockpit.add(m);
+  // live instruments laid over the model's console (model space; the parent rotation carries them)
+  // The model's displays are baked into its texture atlas (mesh Body1_Emmissive_Blue_0, 0.83 and 0.53
+  // from the eye), so lay live panels on the same sight lines just in front of them. Sized from the
+  // screens' measured on-screen extent at 4:3, which keeps them fixed in the world as the viewport changes.
+  const TY = Math.tan(Math.PI / 6);                     // tan(fov/2), fov = 60
+  const put = (scr, ndcY, dist, wN, hN) => {
+    const q = new THREE.Mesh(new THREE.PlaneGeometry(wN * TY * (4 / 3) * dist, hN * TY * dist),
+      new THREE.MeshBasicMaterial({ map: scr.t, toneMapped: false }));
+    q.position.set(0, ndcY * TY, -1).normalize().multiplyScalar(dist);
+    q.rotation.x = Math.atan(ndcY * TY);                // square the panel up to the line of sight
+    cockpit.add(q); };
+  put(screens.nav, -0.21, 0.80, 0.65, 0.227);
+  put(screens.main, -0.59, 0.50, 1.00, 0.35);
+  const key = new THREE.PointLight(0xcfe0ff, 2.2, 6, 1.6); key.position.set(0, 1.55, 0.2); m.add(key);
+  const glowL = new THREE.PointLight(0x66aaff, 1.4, 3, 1.6); glowL.position.set(0, 1.30, 0.75); m.add(glowL);
+}, undefined, () => console.warn('cockpit model failed'));
 
-// ---- console: a conical dash carrying the screens, buttons and yokes ----
-const DASH = { yTop: -0.72, yBot: -1.75, rTop: 3.05, rBot: 2.05 };
-{
-  const d = new THREE.Mesh(new THREE.CylinderGeometry(DASH.rTop, DASH.rBot, DASH.yTop - DASH.yBot, 64, 1, true, 100 * D2R, 160 * D2R), panelMat);
-  d.position.y = (DASH.yTop + DASH.yBot) / 2; cockpit.add(d);
-  const shield = new THREE.Mesh(new THREE.CylinderGeometry(R_IN, DASH.rTop, 0.42, 64, 1, true, 100 * D2R, 160 * D2R), darkMat);
-  shield.position.y = DASH.yTop + 0.21; cockpit.add(shield);
-  const lip = new THREE.Mesh(new THREE.TorusGeometry(DASH.rTop, 0.06, 10, 80, 160 * D2R), trimMat);
-  lip.rotation.x = -Math.PI / 2; lip.rotation.z = -Math.PI / 2 - 80 * D2R; lip.position.y = DASH.yTop; cockpit.add(lip);
-}
-const onDash = (thDeg, v, obj) => {                                   // v: 0 at the bottom lip, 1 at the top of the dash
-  const th = thDeg * D2R, y = DASH.yBot + (DASH.yTop - DASH.yBot) * v, r = DASH.rBot + (DASH.rTop - DASH.rBot) * v;
-  obj.position.set(Math.sin(th) * r, y, -Math.cos(th) * r);
-  obj.lookAt(0, 0.15, 0); cockpit.add(obj); return obj;
-};
-const scrMesh = (s, w, h) => new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: s.t, toneMapped: false }));
-onDash(-33, 0.70, scrMesh(screens.barsL, 0.42, 0.40));
-onDash(-24, 0.73, scrMesh(screens.horizon, 0.47, 0.37));
-onDash(-12, 0.75, scrMesh(screens.gaugeA, 0.38, 0.38));
-onDash(0, 0.77, scrMesh(screens.radar, 0.52, 0.52));
-onDash(12, 0.75, scrMesh(screens.gaugeB, 0.38, 0.38));
-onDash(24, 0.73, scrMesh(screens.barsR, 0.42, 0.40));
-onDash(33, 0.70, scrMesh(screens.nav, 0.47, 0.34));
-// button rows + status LEDs
-const LED = [0xff4d4d, 0x4dff8f, 0x5ad1ff, 0xffcc33];
-for (let i = 0; i < 26; i++) {
-  const th = -42 + i * 3.4, col = LED[i % 4];
-  const b = onDash(th, 0.42, new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.055, 0.02),
-    new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 1.3, roughness: .4 })));
-  b.userData.blink = Math.random() * 6;
-}
-for (let i = 0; i < 18; i++) {
-  const th = -34 + i * 4.0;
-  onDash(th, 0.94, new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, 0.015),
-    new THREE.MeshStandardMaterial({ color: 0x9fe8ff, emissive: 0x3fbfff, emissiveIntensity: 0.9, roughness: .5 })));
-}
-// two yokes
-const yokes = [];
-for (const side of [-1, 1]) {
-  const y = new THREE.Group();
-  const col = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.42, 12), darkMat); col.position.y = 0.21; y.add(col);
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.07, 0.1), darkMat); bar.position.y = 0.44; y.add(bar);
-  for (const gx of [-0.22, 0.22]) { const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.2, 12), new THREE.MeshStandardMaterial({ color: 0x24282f, roughness: .85 }));
-    grip.position.set(gx, 0.5, 0); y.add(grip);
-    const btn = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, 0.04), new THREE.MeshStandardMaterial({ color: 0xff4d4d, emissive: 0xff2222, emissiveIntensity: 1.2 }));
-    btn.position.set(gx, 0.61, 0.02); y.add(btn); }
-  onDash(side * 20, 0.08, y); yokes.push(y);
-}
-// side panels with button grids
-for (const side of [-1, 1]) {
-  const p = new THREE.Group();
-  p.add(new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.62, 0.05), panelMat));
-  for (let r = 0; r < 3; r++) for (let c = 0; c < 5; c++) {
-    const col = LED[(r + c) % 4];
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.02), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.9, roughness: .5 }));
-    b.position.set(-0.3 + c * 0.15, 0.18 - r * 0.18, 0.035); p.add(b);
-  }
-  onDash(side * 68, 0.62, p);
-}
-const seats = new THREE.Group(); cockpit.add(seats);
-const label = (t, y) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'color:#fff;font-size:13px;background:#0008;padding:2px 8px;border-radius:8px'; const o = new CSS2DObject(d); o.position.y = y; return o; };
-let astronautProto = null;
-gltf.load(`${NASA}/Astronaut/Astronaut.glb`, gl => { const m = gl.scene; const box = new THREE.Box3().setFromObject(m); m.scale.setScalar(1.3 / (box.max.y - box.min.y)); astronautProto = m; });
-const buildSeats = () => {
-  seats.clear();
-  for (let i = 0; i < state.pax; i++) {
-    const col = i % 2 ? 1 : -1, row = Math.floor(i / 2);
-    const s = new THREE.Group(); s.position.set(col * 1.1, -1.6, 0.9 + row * 1.4); seats.add(s);
-    s.add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.15, 0.8), new THREE.MeshStandardMaterial({ color: 0x3355aa })));
-    const back = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 0.15), new THREE.MeshStandardMaterial({ color: 0x3355aa })); back.position.set(0, 0.5, 0.35); s.add(back);
-    if (astronautProto) { const a = astronautProto.clone(); a.position.y = 0.08; a.rotation.y = Math.PI; s.add(a); }
-    s.add(label(state.names[i] || `${i + 1}人目`, 1.4));
-  }
-};
 // lunar module
 const lm = new THREE.Group(); lm.visible = false; scene.add(lm);
 gltf.load(`${NASA}/Apollo%20Lunar%20Module/Apollo%20Lunar%20Module.glb`, gl => { const m = gl.scene; const box = new THREE.Box3().setFromObject(m); m.scale.setScalar(0.6 / (box.max.y - box.min.y)); const b2 = new THREE.Box3().setFromObject(m); m.position.y = -b2.min.y; lm.add(m); },
@@ -602,7 +531,7 @@ const fade = (o, cb) => { $('fade').style.opacity = o; if (cb) setTimeout(cb, 12
 const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3(), rocketW = new THREE.Vector3(), rocketTmp = new THREE.Vector3(), aimTmp = new THREE.Vector3();
 
 const startLaunch = () => {
-  stopCam(); show(null); buildSeats(); phase = 'count'; pt = 0;
+  stopCam(); show(null); phase = 'count'; pt = 0; cockpit.visible = false;   // no instrument panels floating in the launch shots
   // camera: on the ground beside the pad, looking at the rocket
   rig.rotation.set(0, 0, 0); camera.rotation.set(0, 0, 0); camera.position.set(0, 0, 0);
   rig.position.set(6.5, 0.35, 8.5); pad.localToWorld(rig.position); aimUp(pad.localToWorld(rocketTmp.set(0, 0.8, 0)), PADN);
@@ -613,11 +542,11 @@ const startLaunch = () => {
 $('board').disabled = !assetsReady; if (!assetsReady) $('board').textContent = '読み込み中…';
 $('board').onclick = startLaunch;
 // skip: drop straight into the cruise without the 100 s launch sequence
-const skipToCockpit = () => { stopCam(); show(null); buildSeats(); flame.visible = false; trail.visible = false; startCockpit(); };
+const skipToCockpit = () => { stopCam(); show(null); flame.visible = false; trail.visible = false; startCockpit(); };
 $('skipTicket').disabled = !assetsReady;
 $('skipTicket').onclick = skipToCockpit;
 $('skip').onclick = skipToCockpit;
-window.__go = { depart: () => { show(null); buildSeats(); startLaunch(); startDepart(); }, launch: t => { show(null); buildSeats(); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); buildSeats(); startCockpit(); }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
+window.__go = { depart: () => { show(null); startLaunch(); startDepart(); }, launch: t => { show(null); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); startCockpit(); }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
 
 // quizzes (mission stamps)
 const QUIZ = [
@@ -711,14 +640,14 @@ function animate() {
     flame.scale.set(0.24 + Math.random() * .06, 1.2 + Math.random() * .4, 1);
     stepSmoke(dt, pt < 5);
     rocket.getWorldPosition(rocketW); trailTmp.set(0, -0.05, 0); rocket.localToWorld(trailTmp);
-    stepTrail(dt, trailTmp, 0.05 + e * 0.003); trail.material.size = 0.3 + e * 0.012;
+    stepTrail(dt, trailTmp, 0.05 + e * 0.003); trail.material.size = Math.min(0.3 + e * 0.006, 0.8);
     if (pt < 14) {                                   // ① wide shot from the ground, camera pans up with the rocket
       rig.position.set(6.5, 0.35, 8.5); pad.localToWorld(rig.position); aimUp(rocketTmp.copy(rocketW).addScaledVector(PADN, 0.7), PADN);
     } else if (pt < 44) {                            // ② close chase beside the rocket: flame + exhaust column
       rocketTmp.set(1.5, 0.2, 1.9); rocket.localToWorld(rocketTmp); rig.position.lerp(rocketTmp, pt < 14.5 ? 1 : 0.12); aimUp(rocketTmp.copy(rocketW).addScaledVector(PADN, 0.6), PADN);
     } else {                                         // ③ onboard camera near the nose, looking down the body at Earth
-      rocketTmp.set(0.22, 1.3, 0.0); rocket.localToWorld(rocketTmp); rig.position.lerp(rocketTmp, pt < 44.5 ? 1 : 0.5);
-      rocketTmp.set(-0.02, -0.6, 1.4); rocket.localToWorld(rocketTmp); aimUp(rocketTmp, PADN);   // oblique: body runs through the frame, horizon + limb ahead
+      rocketTmp.set(0.34, 1.25, 0.12); rocket.localToWorld(rocketTmp); rig.position.lerp(rocketTmp, pt < 44.5 ? 1 : 0.5);
+      rocketTmp.set(0, -3.0, 0); rocket.localToWorld(rocketTmp); aimUp(rocketTmp, PADN);   // down the body: the rocket runs through frame, Earth fills the rest
     }
     dome.material.opacity = THREE.MathUtils.clamp(1 - e / 16, 0, 1);
     dome.material.color.setHex(0x7fbcff).lerp(new THREE.Color(0x0a1a3a), THREE.MathUtils.clamp(e / 16, 0, 1));
