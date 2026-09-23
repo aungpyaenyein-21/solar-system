@@ -57,6 +57,16 @@
   #lhud { top:14px; left:14px; background:#000a; padding:10px 16px; border-radius:12px; font-size:16px; line-height:1.7; display:none; }
   #lhud b { color:var(--acc); }
   #cap { left:0; right:0; bottom:74px; text-align:center; display:none; opacity:0; transition:opacity 1.4s; }
+  #fact { position:fixed; left:14px; bottom:14px; width:330px; background:#0d1222ee; border:1px solid #2b3358; border-radius:14px;
+          padding:14px 16px; z-index:6; display:none; transform:translateX(-380px); transition:transform .5s ease; }
+  #fact.on { transform:translateX(0); }
+  #fact h3 { margin:0 0 6px; font-size:17px; color:var(--acc); }
+  #fact p { margin:8px 0 10px; font-size:13px; line-height:1.8; color:#dce6f5; }
+  #fact canvas { width:100%; height:auto; border-radius:8px; background:#050a14; display:none; }
+  #fact button { font-size:13px; padding:6px 14px; }
+  #ohud { top:14px; left:14px; background:#000a; padding:8px 14px; border-radius:12px; font-size:14px; line-height:1.7; display:none; }
+  #ohud b { color:var(--acc); }
+  body.clean #fact, body.clean #ohud { display:none !important; }
   #cap b { display:block; font-size:30px; color:#fff; letter-spacing:6px; text-shadow:0 2px 18px #000; }
   #cap span { font-size:14px; color:#bcd; letter-spacing:2px; }
   #shot { position:fixed; right:14px; bottom:14px; z-index:6; display:none; font-size:14px; padding:9px 16px; }
@@ -143,6 +153,8 @@
 <div class="hud" id="jhud"></div>
 <div class="hud" id="lhud"></div>
 <div class="hud" id="cap"><b>地球</b><span>直径 12,742 km — わたしたちの家</span></div>
+<div id="fact"><h3></h3><canvas width="300" height="150"></canvas><p></p><button class="sec">つぎへ ▶</button></div>
+<div class="hud" id="ohud"></div>
 <button id="shot">記念写真を保存</button>
 <button id="skip">スキップ ▶▶</button>
 <div class="hud" id="map"><div>EARTH <span style="float:right">MOON</span></div><div class="track"><div class="dot" id="mdot"></div></div><div id="mtxt"></div></div>
@@ -236,6 +248,7 @@ const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.05, 4
 const loader = new THREE.TextureLoader(), gltf = new GLTFLoader();
 const draco = new DRACOLoader(); draco.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/'); gltf.setDRACOLoader(draco);   // NASA GLBs are Draco-compressed
 const tex = (u, srgb = true) => { const t = loader.load(u); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
+const label = (text, y) => { const d = document.createElement('div'); d.className = 'label'; d.textContent = text; const o = new CSS2DObject(d); o.position.y = y; return o; };
 const sky = tex('https://cdn.jsdelivr.net/gh/AhmetFurkanUtsal/space@main/Assets/Textures/8k_stars_milky_way.jpg');   // same 8k sky as index.html
 sky.mapping = THREE.EquirectangularReflectionMapping; scene.background = sky;
 const SUN_DIR = new THREE.Vector3(0.925, 0.324, 0.231).normalize();
@@ -546,7 +559,7 @@ const skipToCockpit = () => { stopCam(); show(null); flame.visible = false; trai
 $('skipTicket').disabled = !assetsReady;
 $('skipTicket').onclick = skipToCockpit;
 $('skip').onclick = skipToCockpit;
-window.__go = { depart: () => { show(null); startLaunch(); startDepart(); }, launch: t => { show(null); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); startCockpit(); }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
+window.__go = { depart: () => { show(null); startLaunch(); startDepart(); }, launch: t => { show(null); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); startCockpit(); }, orbit: u => { show(null); startCockpit(); startOrbit(); orbitT = u || 0; tourIdx = TOUR.findIndex(f => f.at > (u || 0)); if (tourIdx < 0) tourIdx = TOUR.length; }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
 
 // quizzes (mission stamps)
 const QUIZ = [
@@ -582,6 +595,98 @@ const startCockpit = () => {
   scene.fog.near = 1e6; scene.fog.far = 2e6; deck.visible = false;
   rig.position.copy(JOURNEY_FROM); camera.position.set(0, 0, 0); yaw = 0; pitch = -0.01; swing = 1;   // sit the console low in frame; the canopy gets the screen   // window starts on Earth, then the craft swings round to the Moon
 };
+// ---------- lunar orbit tour ----------
+// Texture is equirectangular with 0° longitude (the sub-Earth point) at u = 0.5, so phi = pi + lon.
+const latLon = (lat, lon, r = R_M) => {
+  const th = (90 - lat) * Math.PI / 180, ph = Math.PI + lon * Math.PI / 180;
+  return new THREE.Vector3(-Math.cos(ph) * Math.sin(th), Math.cos(th), Math.sin(ph) * Math.sin(th)).multiplyScalar(r).add(MOON_POS);
+};
+moon.rotation.y = Math.atan2(MOON_DIR.z, -MOON_DIR.x);   // tidally locked: the near side faces Earth
+
+const drawSizes = (g) => {                                // Earth vs Moon discs
+  g.fillStyle = '#050a14'; g.fillRect(0, 0, 300, 150);
+  g.fillStyle = '#2f6fb5'; g.beginPath(); g.arc(88, 75, 60, 0, 6.283); g.fill();
+  g.fillStyle = '#b8b8b8'; g.beginPath(); g.arc(215, 75, 16.4, 0, 6.283); g.fill();
+  g.fillStyle = '#cfe4ff'; g.font = '12px monospace'; g.textAlign = 'center';
+  g.fillText('EARTH 12,742 km', 88, 146); g.fillText('MOON 3,474 km', 222, 146);
+};
+const drawInside = (g) => {                               // crust / mantle / core cutaway
+  g.fillStyle = '#050a14'; g.fillRect(0, 0, 300, 150);
+  const cx = 150, cy = 78;
+  const ring = (r, col) => { g.fillStyle = col; g.beginPath(); g.arc(cx, cy, r, 0, 6.283); g.fill(); };
+  ring(66, '#8d8d8d'); ring(60, '#5c5344'); ring(26, '#b0651f'); ring(18, '#f0d060');
+  g.strokeStyle = '#7fa8d8'; g.lineWidth = 1; g.fillStyle = '#cfe4ff'; g.font = '11px monospace'; g.textAlign = 'left';
+  const lab = (y, t) => { g.fillText(t, 226, y); };
+  lab(24, '地殻 30–60 km'); lab(48, 'マントル'); lab(72, '外核 ~300 km'); lab(96, '内核 ~240 km');
+};
+const drawTemp = (g) => {                                 // day / night surface temperature
+  g.fillStyle = '#050a14'; g.fillRect(0, 0, 300, 150);
+  const grd = g.createLinearGradient(0, 0, 300, 0); grd.addColorStop(0, '#ff8a3d'); grd.addColorStop(0.5, '#6b5a4a'); grd.addColorStop(1, '#2b4a82');
+  g.fillStyle = grd; g.fillRect(20, 46, 260, 30);
+  g.fillStyle = '#fff'; g.font = 'bold 15px monospace'; g.textAlign = 'left'; g.fillText('+120°C', 20, 36);
+  g.textAlign = 'right'; g.fillText('−171°C', 280, 36);
+  g.fillStyle = '#9fb6d0'; g.font = '11px monospace'; g.textAlign = 'center';
+  g.fillText('昼', 46, 98); g.fillText('明暗境界線', 150, 98); g.fillText('夜', 256, 98);
+  g.fillText('空気がないので、日かげに入ると一気に冷える', 150, 126);
+};
+const drawGrav = (g) => {                                 // 1/6 g jump comparison
+  g.fillStyle = '#050a14'; g.fillRect(0, 0, 300, 150);
+  g.strokeStyle = '#3a4668'; g.beginPath(); g.moveTo(10, 130); g.lineTo(290, 130); g.stroke();
+  g.fillStyle = '#4f7fc0'; g.fillRect(56, 106, 22, 24); g.fillStyle = '#b8b8b8'; g.fillRect(212, 26, 22, 104);
+  g.fillStyle = '#cfe4ff'; g.font = '12px monospace'; g.textAlign = 'center';
+  g.fillText('地球 0.4 m', 67, 148); g.fillText('月 2.4 m', 223, 148);
+  g.fillText('同じ力でジャンプすると 6 倍', 150, 18);
+};
+const TOUR = [
+  { at: 0.02, title: '大きさと重さ', body: '直径 3,474 km — 地球の約 1/4。重さは地球の 1/81 しかない。太陽系で 5 番目に大きい衛星。', draw: drawSizes },
+  { at: 0.15, title: '静かの海 — アポロ11号', body: '黒く見えるところは「海」。水ではなく、38億年前の溶岩が固まった玄武岩。1969年、人類はここに降りた。', pin: 'apollo11' },
+  { at: 0.30, title: '昼と夜のさかい目', body: '空気がないので熱をためられない。日なたは +120°C、日かげは −171°C。放射線は地球の約 200 倍。', draw: drawTemp },
+  { at: 0.44, title: '月の渦 — 英知の海', body: '白い渦もよう「ルナー・スワール」。地殻に残った磁石が太陽風をはね返すので、まわりのように黒く焼けない。地形のでこぼこは無い。', pin: 'ingenii' },
+  { at: 0.58, title: '月の中身', body: '地殻は地球側が約 30 km、裏側は約 60 km と厚い。だから裏側には「海」がほとんどない。中心には鉄の核。', draw: drawInside },
+  { at: 0.74, title: 'ライナー・ガンマ', body: 'いちばん有名な渦。大きさ約 70 km。南極には太陽が一度も当たらないクレーターがあり、そこに氷が残っている。', pin: 'reiner' },
+  { at: 0.88, title: '地球のぼり', body: '月から見る地球は、地球から見る月の 3.7 倍の大きさ。そして月面からは、地球はいつも空の同じ場所に止まって見える。', pin: 'earthrise' },
+  { at: 0.96, title: '重力は 1/6', body: '1.62 m/s² — 地球の 1/6。同じ力でジャンプすれば 6 倍とべる。逃げ出すのに必要な速さは 2.38 km/s。', draw: drawGrav },
+];
+const PINS = {
+  apollo11: { lat: 0.67, lon: 23.47, label: 'Apollo 11' },
+  reiner: { lat: 7.5, lon: -59.0, label: 'Reiner Gamma' },
+  ingenii: { lat: -33.7, lon: 163.5, label: 'Mare Ingenii' },
+  tycho: { lat: -43.3, lon: -11.4, label: 'Tycho' },
+  south: { lat: -89.9, lon: 0, label: 'South Pole' },
+};
+const pinGroup = new THREE.Group(); pinGroup.visible = false; scene.add(pinGroup);
+for (const k in PINS) {
+  const p = PINS[k], pos = latLon(p.lat, p.lon, R_M * 1.002);
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1.6, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffcc55 }));
+  const lb = label(p.label, 4); m.position.copy(pos); m.add(lb); pinGroup.add(m); PINS[k].mesh = m; PINS[k].lab = lb;
+}
+let tourIdx = 0, orbitT = 0, factOpen = false;
+const pinTmp = new THREE.Vector3(), pinTmp2 = new THREE.Vector3();
+// The far side is genuinely in shadow at this phase, so the craft lights the ground it flies over.
+const orbitLamp = new THREE.DirectionalLight(0xc6d6ea, 1.7); orbitLamp.visible = false;
+orbitLamp.target.position.copy(MOON_POS); scene.add(orbitLamp, orbitLamp.target);
+const factEl = $('fact');
+const showFact = f => {
+  factOpen = true;
+  factEl.querySelector('h3').textContent = f.title;
+  factEl.querySelector('p').textContent = f.body;
+  const cv = factEl.querySelector('canvas');
+  if (f.draw) { cv.style.display = 'block'; f.draw(cv.getContext('2d')); } else cv.style.display = 'none';
+  factEl.style.display = 'block'; requestAnimationFrame(() => factEl.classList.add('on'));
+};
+factEl.querySelector('button').onclick = () => { factEl.classList.remove('on'); factOpen = false; setTimeout(() => factEl.style.display = 'none', 500); };
+const ORBIT_S = 95, ORBIT_R = R_M + 48;
+// closed ground track eastward through the features the tour talks about
+const orbitCurve = new THREE.CatmullRomCurve3([
+  [0, 0], [0.7, 23.5], [15, 80], [-33.7, 163.5], [-12, 220], [7.5, 301], [10, 340],
+].map(([la, lo]) => latLon(la, lo, ORBIT_R)), true, 'centripetal');
+const startOrbit = () => {
+  phase = 'orbit'; pt = 0; orbitT = 0; tourIdx = 0;
+  cockpit.visible = true; lookOn = true; pinGroup.visible = true; orbitLamp.visible = true;
+  $('jhud').style.display = 'none'; $('map').style.display = 'none'; $('ohud').style.display = 'block';
+  yaw = 0; pitch = -0.01;
+};
+
 const startLanding = () => {
   phase = 'land'; pt = 0; cockpit.visible = false; lookOn = false; lm.visible = true; $('quiz').style.display = 'none'; quizOpen = false;
   $('jhud').style.display = 'none'; $('map').style.display = 'none'; $('hint').style.display = 'none';
@@ -687,11 +792,25 @@ function animate() {
     const pct = phase === 'fly' ? t : 1 - t, spd = Math.round(3800 + 20000 * Math.abs(Math.cos(t * Math.PI)));
     if (rt - scrT > 0.12) { scrT = rt; updateScreens(rt, day, km, pct, spd, Math.sin(rt * 0.23) * 0.09, Math.sin(rt * 0.17) * 0.06); }
     $('mdot').style.left = (phase === 'fly' ? t : 1 - t) * 100 + '%'; $('mtxt').textContent = `${Math.round((phase === 'fly' ? t : 1 - t) * 100)}%`;
-    if (phase === 'fly' && !quizOpen && quizIdx < 3 && t > [0.2, 0.5, 0.8][quizIdx]) askQuiz();
-    if (phase === 'fly' && t >= 1) { fade(1, () => { startLanding(); fade(0); }); phase = 'wait'; }
+    if (phase === 'home' && !quizOpen && quizIdx < QUIZ.length && t > [0.25, 0.5, 0.75][quizIdx]) askQuiz();
+    if (phase === 'fly' && t >= 1) { fade(1, () => { startOrbit(); fade(0); }); phase = 'wait'; }
     if (phase === 'home' && t >= 1) { phase = 'done'; $('jhud').style.display = 'none'; cockpit.visible = false; lookOn = false; rig.position.set(600, R_E + 900, 1600); aim(0, 0, 0); camera.rotation.set(0, 0, 0);
       $('doneStars').textContent = stars(); $('doneMsg').textContent = `クルー ${state.pax}名、月往復ミッション完了。ミッション達成 ${state.stars}/3`;
       try { localStorage.setItem('unlock', 'mars'); } catch {} show('s-done'); }
+  }
+  if (phase === 'orbit') {
+    if (!factOpen) orbitT += dt / ORBIT_S;                       // the tour pauses while a card is up
+    const u = Math.min(orbitT, 0.999);
+    rig.position.copy(orbitCurve.getPointAt(u));
+    aimTmp.copy(orbitCurve.getPointAt((u + 0.022) % 1)).sub(MOON_POS).normalize().multiplyScalar(R_M).add(MOON_POS);
+    aim(aimTmp.x, aimTmp.y, aimTmp.z); camera.rotation.set(-pitch, -yaw, 0, 'YXZ');
+    orbitLamp.position.copy(rig.position);
+    for (const k in PINS) { const pm = PINS[k].mesh;                      // hide pins on the far side of the globe
+      pinTmp.copy(pm.position).sub(MOON_POS).normalize();
+      pm.visible = PINS[k].lab.visible = pinTmp.dot(pinTmp2.copy(rig.position).sub(pm.position).normalize()) > 0.12; }
+    if (tourIdx < TOUR.length && orbitT >= TOUR[tourIdx].at) showFact(TOUR[tourIdx++]);
+    $('ohud').innerHTML = `🌕 月をまわっています<br><b>${Math.round(orbitT * 100)}%</b> / 1周　${tourIdx}/${TOUR.length}`;
+    if (orbitT >= 1) { fade(1, () => { $('ohud').style.display = 'none'; pinGroup.visible = orbitLamp.visible = false; startLanding(); fade(0); }); phase = 'wait'; }
   }
   if (phase === 'land') {
     const T = 10, k = THREE.MathUtils.clamp(pt / T, 0, 1), h = (1 - k) * (1 - k) * 5;    // descend 5 -> 0
