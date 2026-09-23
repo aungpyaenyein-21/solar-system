@@ -499,10 +499,12 @@ gltf.load('assets/cockpit.glb', g => {
   // horizontal panel. Model-space, so they stay glued to the screens wherever EYE moves.
   const panel = (scr, w, h) => new THREE.Mesh(new THREE.PlaneGeometry(w, h),
     new THREE.MeshBasicMaterial({ map: scr.t, toneMapped: false }));
-  const upper = panel(screens.nav, 0.45, 0.123);
-  upper.position.set(0, 1.292, 0.782); upper.rotation.set(0, Math.PI, 0); upper.rotateX(-0.778);
-  const lower = panel(screens.main, 0.62, 0.17);
-  lower.position.set(0, 1.236, 0.565); lower.rotateX(-Math.PI / 2); lower.rotateZ(Math.PI);
+  // measured surfaces: tilted band centre (0, 1.287, 0.787) 0.85 × 0.127, its middle screen 0.40 wide;
+  // flat panel centre (0, 1.239, 0.543) 0.767 × 0.236. Panels sit 3–4 mm proud so they never z-fight.
+  const upper = panel(screens.nav, 0.40, 0.109);
+  upper.position.set(0, 1.2905, 0.7835); upper.rotation.set(0, Math.PI, 0); upper.rotateX(-0.778);
+  const lower = panel(screens.main, 0.75, 0.205);
+  lower.position.set(0, 1.2425, 0.543); lower.rotateX(-Math.PI / 2); lower.rotateZ(Math.PI);
   m.add(upper, lower);
   const key = new THREE.PointLight(0xcfe0ff, 2.2, 6, 1.6); key.position.set(0, 1.55, 0.2); m.add(key);
   const glowL = new THREE.PointLight(0x66aaff, 1.4, 3, 1.6); glowL.position.set(0, 1.30, 0.75); m.add(glowL);
