@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>うちゅう旅行 — 地球 ⇄ 月</title>
+<style>
+  :root { --bg:#05060f; --card:#12162a; --acc:#ffcc33; --acc2:#5ad1ff; --txt:#f2f4ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:"Hiragino Maru Gothic ProN","Rounded Mplus 1c","Noto Sans JP",system-ui,sans-serif; overflow:hidden; }
+  canvas.gl { position:fixed; inset:0; }
+  .screen { position:fixed; inset:0; display:none; overflow:auto; z-index:5; }
+  .screen.on { display:block; }
+  .center { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; gap:18px; }
+  h1 { font-size:34px; margin:0; color:var(--acc); text-shadow:0 2px 12px #000; }
+  h2 { font-size:22px; margin:0; }
+  .card { background:var(--card); border:2px solid #2b3358; border-radius:18px; padding:18px 22px; box-shadow:0 10px 40px #0008; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; align-items:center; }
+  button { font:inherit; font-size:18px; padding:12px 22px; border-radius:14px; border:none; cursor:pointer; background:var(--acc); color:#222; font-weight:bold; box-shadow:0 4px 0 #b08a00; }
+  button:active { transform:translateY(3px); box-shadow:none; }
+  button.sec { background:#2b3358; color:#fff; box-shadow:0 4px 0 #171b30; }
+  button.big { font-size:26px; padding:18px 40px; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  input[type=text] { font:inherit; font-size:18px; padding:10px 14px; border-radius:10px; border:2px solid #2b3358; background:#0b0e1c; color:#fff; width:200px; }
+  .dest { width:180px; text-align:center; cursor:pointer; border-color:#2b3358; transition:.15s; }
+  .dest .ico { font-size:56px; }
+  .dest.sel { border-color:var(--acc); transform:scale(1.05); }
+  .dest.lock { opacity:.45; cursor:not-allowed; }
+  .counter { display:flex; align-items:center; gap:14px; font-size:36px; }
+  .counter button { width:56px; height:56px; font-size:30px; padding:0; border-radius:50%; }
+  .names { display:flex; flex-direction:column; gap:8px; }
+  .names label { display:flex; gap:10px; align-items:center; }
+  .info { color:#bcd; font-size:15px; }
+  /* ticket */
+  .ticket { width:520px; background:#fff8e6; color:#222; border-radius:16px; display:grid; grid-template-columns:150px 1fr; overflow:hidden; box-shadow:0 8px 30px #000a; page-break-inside:avoid; }
+  .ticket .stub { background:#1b2a6b; color:#fff; padding:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; border-right:3px dashed #fff8e6; }
+  .ticket .stub .seat { font-size:34px; font-weight:bold; }
+  .ticket .main { padding:16px 18px; display:grid; grid-template-columns:1fr auto; gap:6px 12px; }
+  .ticket .route { grid-column:1/-1; font-size:26px; font-weight:bold; letter-spacing:1px; color:#1b2a6b; }
+  .ticket .lbl { font-size:11px; color:#666; }
+  .ticket .val { font-size:16px; font-weight:bold; }
+  .ticket .photo { grid-row:2/6; width:86px; height:110px; border-radius:8px; background:#ddd center/cover; border:2px solid #1b2a6b; }
+  .ticket .bar { grid-column:1/-1; height:34px; background:repeating-linear-gradient(90deg,#222 0 2px,#fff8e6 2px 5px,#222 5px 6px,#fff8e6 6px 10px); margin-top:6px; }
+  .ticket .stamp { grid-column:1/-1; display:flex; gap:8px; font-size:13px; color:#888; }
+  .ticket .stamp span { width:28px; height:28px; border:2px dashed #bbb; border-radius:50%; display:inline-block; }
+  #print-area { display:flex; flex-direction:column; gap:16px; align-items:center; }
+  /* photo */
+  #suitCanvas { border-radius:14px; background:#111; }
+  .thumbs { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  .thumbs img { width:70px; height:94px; object-fit:cover; border-radius:8px; border:2px solid #2b3358; }
+  /* HUD */
+  .hud { position:fixed; z-index:6; pointer-events:none; }
+  #count { left:0; right:0; top:22%; text-align:center; font-size:140px; font-weight:bold; color:#fff; text-shadow:0 0 30px var(--acc); display:none; }
+  #jhud { top:14px; left:14px; background:#000a; padding:10px 16px; border-radius:12px; font-size:16px; line-height:1.7; display:none; pointer-events:auto; }
+  #jhud b { color:var(--acc); }
+  #map { top:14px; right:14px; background:#000a; padding:10px 16px; border-radius:12px; font-size:15px; display:none; min-width:220px; }
+  #map .track { height:8px; background:#2b3358; border-radius:4px; position:relative; margin:8px 0; }
+  #map .dot { position:absolute; top:-6px; width:20px; height:20px; border-radius:50%; background:var(--acc); transform:translateX(-50%); }
+  #hint { bottom:14px; left:0; right:0; text-align:center; color:#9ab; font-size:14px; }
+  #quiz { position:fixed; z-index:7; left:50%; top:50%; transform:translate(-50%,-50%); width:min(520px,92vw); display:none; text-align:center; }
+  #quiz .opts { display:flex; flex-direction:column; gap:10px; margin-top:12px; }
+  #quiz .opts button { background:#2b3358; color:#fff; box-shadow:0 4px 0 #171b30; }
+  #quiz .opts button.ok { background:#3ad07a; color:#052; }
+  #quiz .opts button.ng { background:#e05555; color:#fff; }
+  .stars { font-size:28px; letter-spacing:4px; }
+  #fade { position:fixed; inset:0; background:#000; opacity:0; pointer-events:none; z-index:8; transition:opacity 1.2s; }
+  #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:8; }
+  @media print { body * { visibility:hidden; } #print-area, #print-area * { visibility:visible; } #print-area { position:absolute; left:0; top:0; width:100%; } .ticket { box-shadow:none; border:1px solid #999; } }
+</style>
+
+<canvas class="gl" id="gl"></canvas>
+<div id="fade"></div><div id="flash"></div>
+
+<!-- ① チケット -->
+<div class="screen on" id="s-ticket"><div class="center">
+  <h1>🚀 うちゅう旅行 チケットうりば</h1>
+  <div class="row">
+    <div class="card dest sel" data-d="moon"><div class="ico">🌙</div><h2>月</h2><div class="info">3日 / 38万km</div></div>
+    <div class="card dest lock" data-d="mars"><div class="ico">🔴</div><h2>火星</h2><div class="info">🔒 月に行ったらひらく</div></div>
+    <div class="card dest lock" data-d="jupiter"><div class="ico">🟠</div><h2>木星</h2><div class="info">🔒 火星に行ったらひらく</div></div>
+  </div>
+  <div class="card"><h2>なんにんで行く？</h2>
+    <div class="counter"><button id="minus">−</button><span id="npax">2</span><button id="plus">＋</button></div>
+    <div class="names" id="names"></div>
+  </div>
+  <button class="big" id="buy">🎫 チケットを買う</button>
+</div></div>
+
+<!-- ② チケット印刷 -->
+<div class="screen" id="s-print"><div class="center">
+  <h1>🎫 チケットができました！</h1>
+  <div id="print-area"></div>
+  <div class="row"><button class="sec" id="print">🖨 印刷する</button><button id="toPhoto">📷 うちゅう服で写真をとる（スキップOK）</button></div>
+</div></div>
+
+<!-- ③ 写真 -->
+<div class="screen" id="s-photo"><div class="center">
+  <h1>👨‍🚀 うちゅう服で写真</h1>
+  <div class="card"><h2 id="photoWho">1人目</h2>
+    <div class="row"><input type="file" id="file" accept="image/*"><button class="sec" id="cam">📹 カメラでとる</button></div>
+    <video id="v" playsinline muted style="display:none;width:240px;border-radius:12px"></video>
+    <canvas id="suitCanvas" width="300" height="400"></canvas>
+    <div class="row"><button id="snap" style="display:none">📸 パシャ！</button><button class="sec" id="okPhoto">OK つぎの人へ</button></div>
+  </div>
+  <div class="thumbs" id="thumbs"></div>
+  <button class="big" id="board">🚀 ロケットにのる</button>
+</div></div>
+
+<!-- ⑦ 着陸 / ⑧ 完了 -->
+<div class="screen" id="s-land"><div class="center"><div class="card" style="max-width:600px">
+  <h1>🌙 月にとうちゃく！</h1>
+  <div class="stars" id="landStars"></div>
+  <h2>月のこと</h2>
+  <ul class="info" style="font-size:17px;line-height:1.9;text-align:left">
+    <li>大きさ：直径 3,474 km（地球の 1/4）</li>
+    <li>地球からのきょり：約 38万 km（ロケットで 3日）</li>
+    <li>重力：地球の <b>1/6</b> — ジャンプが 6倍たかい！</li>
+    <li>昼は 110℃、夜は −170℃ — 空気がないから</li>
+    <li>1969年、アポロ11号で人間がはじめて歩いた</li>
+  </ul>
+  <div class="row"><button class="big" id="goHome">🌍 地球にかえる</button></div>
+</div></div></div>
+<div class="screen" id="s-done"><div class="center"><div class="card" style="text-align:center">
+  <h1>🎉 おかえりなさい！</h1><div class="stars" id="doneStars"></div>
+  <p id="doneMsg"></p><div class="row"><button class="big" id="again">🔴 つぎは火星へ（じゅんび中）</button><button class="sec" id="restart">もういちど</button></div>
+</div></div></div>
+
+<div class="hud" id="count"></div>
+<div class="hud" id="jhud"></div>
+<div class="hud" id="map"><div>🌍 <span style="float:right">🌙</span></div><div class="track"><div class="dot" id="mdot"></div></div><div id="mtxt"></div></div>
+<div class="hud" id="hint" style="display:none">ドラッグ／👆で窓の外を見まわせる</div>
+<div class="card" id="quiz"><h2 id="qq"></h2><div class="opts" id="qo"></div></div>
+
+<script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+const $ = id => document.getElementById(id);
+const B = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/planets';
+const HD = 'https://cdn.jsdelivr.net/gh/Wahid-heisenberg/solar-system-simulation@main/textures';
+const NASA = 'https://cdn.jsdelivr.net/gh/nasa/NASA-3D-Resources@master/3D%20Models';
+window.__J = () => ({ phase, rig: rig.position.toArray(), rocketKids: rocket.children.length, cam: camera.rotation.toArray(), ck: cockpit.visible, ckn: cockpit.children.length, ckp: cockpit.parent === rig, cp: camera.parent === rig, camPos: camera.position.toArray() });
+window.__S = () => ({ scene, camera, rig, cockpit, THREE, earth });
+const state = { dest: 'moon', pax: 2, names: [], photos: [], stars: 0, speed: 1 };
+
+// ---------- ① ticket ----------
+const renderNames = () => { $('names').innerHTML = Array.from({ length: state.pax }, (_, i) =>
+  `<label>${i + 1}人目 <input type="text" data-i="${i}" placeholder="なまえ" value="${state.names[i] || ''}"></label>`).join('');
+  $('names').querySelectorAll('input').forEach(inp => inp.oninput = () => state.names[+inp.dataset.i] = inp.value); };
+$('minus').onclick = () => { state.pax = Math.max(1, state.pax - 1); $('npax').textContent = state.pax; renderNames(); };
+$('plus').onclick = () => { state.pax++; $('npax').textContent = state.pax; renderNames(); };
+renderNames();
+document.querySelectorAll('.dest').forEach(d => d.onclick = () => { if (d.classList.contains('lock')) return; document.querySelectorAll('.dest').forEach(x => x.classList.remove('sel')); d.classList.add('sel'); state.dest = d.dataset.d; });
+const show = id => { document.querySelectorAll('.screen').forEach(s => s.classList.remove('on')); if (id) $(id).classList.add('on'); };
+const today = new Date().toLocaleDateString('ja-JP');
+const ticketHTML = i => `<div class="ticket"><div class="stub"><div>SEAT</div><div class="seat">${Math.floor(i / 2) + 1}${'AB'[i % 2]}</div><div>🚀</div></div>
+  <div class="main"><div class="route">EARTH 🌍 ⇄ 🌙 MOON</div>
+  <div><div class="lbl">PASSENGER / なまえ</div><div class="val">${state.names[i] || 'うちゅうひこうし ' + (i + 1)}</div></div>
+  <div class="photo" style="${state.photos[i] ? `background-image:url(${state.photos[i]})` : ''}"></div>
+  <div><div class="lbl">DATE / 出発日</div><div class="val">${today}</div></div>
+  <div><div class="lbl">DISTANCE / きょり</div><div class="val">384,400 km</div></div>
+  <div><div class="lbl">TRAVEL TIME / 時間</div><div class="val">3日</div></div>
+  <div class="stamp">ミッション スタンプ <span></span><span></span><span></span></div><div class="bar"></div></div></div>`;
+const renderTickets = () => $('print-area').innerHTML = Array.from({ length: state.pax }, (_, i) => ticketHTML(i)).join('');
+$('buy').onclick = () => { renderTickets(); show('s-print'); };
+$('print').onclick = () => window.print();
+
+// ---------- ③ photo (2D spacesuit composite, stays in browser) ----------
+let cur = 0, src = null, stream = null;
+const sc = $('suitCanvas'), g = sc.getContext('2d');
+const drawSuit = () => {
+  g.clearRect(0, 0, 300, 400); g.fillStyle = '#0b0e1c'; g.fillRect(0, 0, 300, 400);
+  // stars
+  g.fillStyle = '#fff'; for (let i = 0; i < 60; i++) g.fillRect((i * 97) % 300, (i * 53) % 400, 2, 2);
+  // body
+  g.fillStyle = '#f4f4f4'; g.beginPath(); g.roundRect(70, 190, 160, 210, 40); g.fill();
+  g.fillStyle = '#e0e0e0'; g.fillRect(40, 200, 40, 150); g.fillRect(220, 200, 40, 150);   // arms
+  g.fillStyle = '#1b2a6b'; g.fillRect(110, 230, 80, 60); g.fillStyle = '#e33'; g.fillRect(120, 240, 20, 12);
+  g.fillStyle = '#5ad1ff'; g.fillRect(150, 240, 30, 12);
+  // helmet
+  g.fillStyle = '#ddd'; g.beginPath(); g.arc(150, 120, 92, 0, Math.PI * 2); g.fill();
+  g.save(); g.beginPath(); g.arc(150, 120, 74, 0, Math.PI * 2); g.clip();
+  if (src) { const r = Math.max(148 / src.width, 148 / src.height); const w = src.width * r, h = src.height * r; g.drawImage(src, 150 - w / 2, 120 - h / 2, w, h); }
+  else { g.fillStyle = '#334'; g.fillRect(0, 0, 300, 400); g.fillStyle = '#9ab'; g.font = '16px sans-serif'; g.textAlign = 'center'; g.fillText('写真をえらんでね', 150, 125); }
+  g.restore();
+  g.strokeStyle = '#fff'; g.lineWidth = 6; g.beginPath(); g.arc(150, 120, 76, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = '#fff5'; g.beginPath(); g.ellipse(120, 90, 26, 14, -0.6, 0, Math.PI * 2); g.fill();   // visor glint
+  g.fillStyle = '#ffcc33'; g.font = 'bold 18px sans-serif'; g.textAlign = 'center'; g.fillText(state.names[cur] || '', 150, 385);
+};
+drawSuit();
+$('file').onchange = e => { const f = e.target.files[0]; if (!f) return; const img = new Image(); img.onload = () => { src = img; drawSuit(); }; img.src = URL.createObjectURL(f); };
+$('cam').onclick = async () => { try { stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480 } }); $('v').srcObject = stream; $('v').style.display = 'block'; await $('v').play(); $('snap').style.display = ''; } catch (e) { alert('カメラが使えません（https が必要）'); } };
+$('snap').onclick = () => { const c = document.createElement('canvas'); c.width = $('v').videoWidth; c.height = $('v').videoHeight; c.getContext('2d').drawImage($('v'), 0, 0); const img = new Image(); img.onload = () => { src = img; drawSuit(); }; img.src = c.toDataURL(); };
+const stopCam = () => { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } $('v').style.display = 'none'; $('snap').style.display = 'none'; };
+$('okPhoto').onclick = () => { if (src) { state.photos[cur] = sc.toDataURL('image/jpeg', .85); const im = document.createElement('img'); im.src = state.photos[cur]; $('thumbs').appendChild(im); }
+  src = null; cur++; if (cur >= state.pax) { cur = state.pax - 1; $('okPhoto').disabled = true; } $('photoWho').textContent = `${cur + 1}人目：${state.names[cur] || ''}`; drawSuit(); };
+$('toPhoto').onclick = () => { cur = 0; $('photoWho').textContent = `1人目：${state.names[0] || ''}`; drawSuit(); show('s-photo'); };
+
+// ---------- 3D ----------
+const renderer = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: true });
+renderer.setSize(innerWidth, innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+const labelR = new CSS2DRenderer(); labelR.setSize(innerWidth, innerHeight);
+labelR.domElement.style.cssText = 'position:fixed;top:0;left:0;pointer-events:none;z-index:4'; document.body.appendChild(labelR.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.05, 5000);
+const loader = new THREE.TextureLoader(), gltf = new GLTFLoader();
+const draco = new DRACOLoader(); draco.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/'); gltf.setDRACOLoader(draco);   // NASA GLBs are Draco-compressed
+const tex = (u, srgb = true) => { const t = loader.load(u); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
+const sky = tex(`${HD}/2k_stars_milky_way.jpg`); sky.mapping = THREE.EquirectangularReflectionMapping; scene.background = sky;
+const sun = new THREE.DirectionalLight(0xffffff, 2.6); sun.position.set(300, 80, 120); scene.add(sun, new THREE.AmbientLight(0x334, 0.6));
+
+// Earth r=20 at origin, Moon r=5.4 at -220z  (ponytail: compressed distance so both fit a 3-minute ride)
+const R_E = 20, R_M = 5.4, MOON_POS = new THREE.Vector3(30, 8, -220);
+const earth = new THREE.Mesh(new THREE.SphereGeometry(R_E, 96, 96), new THREE.MeshPhongMaterial({
+  map: tex(`${B}/earth_atmos_2048.jpg`), specularMap: tex(`${B}/earth_specular_2048.jpg`, false), normalMap: tex(`${B}/earth_normal_2048.jpg`, false),
+  emissiveMap: tex(`${B}/earth_lights_2048.png`), emissive: new THREE.Color(0xffee88), emissiveIntensity: 0.9, specular: new THREE.Color(0x444444), shininess: 18 }));
+scene.add(earth);
+const clouds = new THREE.Mesh(new THREE.SphereGeometry(R_E * 1.015, 96, 96), new THREE.MeshPhongMaterial({ map: tex(`${B}/earth_clouds_1024.png`), transparent: true, depthWrite: false }));
+earth.add(clouds);
+const glowMat = c => new THREE.ShaderMaterial({ uniforms: { c: { value: new THREE.Color(c) } },
+  vertexShader: 'varying float vi; void main(){ vec3 n=normalize(normalMatrix*normal); vi=pow(0.62-dot(n,vec3(0,0,1)),3.0); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+  fragmentShader: 'uniform vec3 c; varying float vi; void main(){ float i=clamp(vi,0.0,1.0); gl_FragColor=vec4(c*i,i);}', side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
+const glow = new THREE.Mesh(new THREE.SphereGeometry(R_E, 64, 64), glowMat(0x3399ff)); glow.scale.setScalar(1.16); earth.add(glow);
+const moon = new THREE.Mesh(new THREE.SphereGeometry(R_M, 96, 96), new THREE.MeshStandardMaterial({ map: tex(`${HD}/2k_moon.jpg`), bumpMap: loader.load('https://cdn.jsdelivr.net/gh/jeromeetienne/threex.planets@master/images/moonbump1k.jpg'), bumpScale: 0.12, roughness: 1 }));
+moon.position.copy(MOON_POS); scene.add(moon);
+// sky dome: blue near ground, fades to space with altitude
+const dome = new THREE.Mesh(new THREE.SphereGeometry(R_E * 1.12, 48, 48), new THREE.MeshBasicMaterial({ color: 0x6fb6ff, side: THREE.BackSide, transparent: true, opacity: 1, depthWrite: false }));
+scene.add(dome);
+
+// launch pad on top of Earth
+const pad = new THREE.Group(); pad.position.set(0, R_E, 0); scene.add(pad);
+pad.add(new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.4, 0.15, 24), new THREE.MeshStandardMaterial({ color: 0x777 })));
+const tower = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.6, 0.18), new THREE.MeshStandardMaterial({ color: 0xcc4422 })); tower.position.set(-0.55, 1.3, 0); pad.add(tower);
+const rocket = new THREE.Group(); pad.add(rocket);
+const fallbackRocket = () => { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 1.8, 16), new THREE.MeshStandardMaterial({ color: 0xeeeeee })); b.position.y = 0.9;
+  const n = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.4, 16), new THREE.MeshStandardMaterial({ color: 0xcc3333 })); n.position.y = 2; rocket.add(b, n); };
+gltf.load(`${NASA}/Saturn%20V/Saturn%20V.glb`, gl => { const m = gl.scene; const box = new THREE.Box3().setFromObject(m); const s = 2.4 / (box.max.y - box.min.y); m.scale.setScalar(s);
+  const b2 = new THREE.Box3().setFromObject(m); m.position.set(-(b2.min.x + b2.max.x) / 2, -b2.min.y, -(b2.min.z + b2.max.z) / 2); rocket.add(m); }, undefined, fallbackRocket);
+const flame = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffaa33, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, map: (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const r = x.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(255,240,180,1)'); r.addColorStop(.4, 'rgba(255,140,40,.6)'); r.addColorStop(1, 'rgba(255,80,20,0)'); x.fillStyle = r; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })() }));
+flame.position.y = -0.3; flame.scale.set(0.9, 1.6, 1); flame.visible = false; rocket.add(flame);
+
+// cockpit (built from primitives, rides with the camera rig)
+const rig = new THREE.Object3D(); scene.add(rig); rig.add(camera);
+const aim = (x, y, z) => { rig.lookAt(x, y, z); rig.rotateY(Math.PI); };   // Object3D.lookAt faces +Z; the camera looks down -Z
+const cockpit = new THREE.Group(); cockpit.visible = false; rig.add(cockpit);
+{
+  const wall = new THREE.MeshStandardMaterial({ color: 0xcfd6e6, roughness: .8, side: THREE.DoubleSide }), dark = new THREE.MeshStandardMaterial({ color: 0x2a3150, roughness: .9 });
+  const box = (w, h, d, x, y, z, m = wall) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); cockpit.add(b); return b; };
+  // front wall with window hole: top/bottom/left/right slabs at z=-2
+  // window opening x ±1.3, y −0.35..0.85 at z=−1.4 (sized so the frame is on screen at 60° FOV)
+  box(6, 1.15, 0.2, 0, 1.425, -1.4); box(6, 1.65, 0.2, 0, -1.175, -1.4); box(1.7, 4, 0.2, -2.15, 0, -1.4); box(1.7, 4, 0.2, 2.15, 0, -1.4);
+  box(0.2, 4, 6, -3, 0, 1); box(0.2, 4, 6, 3, 0, 1); box(6, 0.2, 6, 0, 2, 1); box(6, 0.2, 6, 0, -2, 1); box(6, 4, 0.2, 0, 0, 4);  // sides/roof/floor/back
+  box(3.2, 0.3, 0.9, 0, -0.6, -0.95, dark);                                                                                  // console
+  for (let i = 0; i < 8; i++) { const l = box(0.1, 0.1, 0.05, -1.2 + i * 0.34, -0.42, -0.52, new THREE.MeshStandardMaterial({ color: [0xff4444, 0x44ff88, 0x5ad1ff, 0xffcc33][i % 4], emissive: [0xff4444, 0x44ff88, 0x5ad1ff, 0xffcc33][i % 4], emissiveIntensity: 1.2 })); l.userData.blink = Math.random() * 6; }
+  const wl = new THREE.PointLight(0xffffff, 1.2, 12); wl.position.set(0, 1.5, 0.5); cockpit.add(wl);
+}
+const seats = new THREE.Group(); cockpit.add(seats);
+const label = (t, y) => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'color:#fff;font-size:13px;background:#0008;padding:2px 8px;border-radius:8px'; const o = new CSS2DObject(d); o.position.y = y; return o; };
+let astronautProto = null;
+gltf.load(`${NASA}/Astronaut/Astronaut.glb`, gl => { const m = gl.scene; const box = new THREE.Box3().setFromObject(m); m.scale.setScalar(1.3 / (box.max.y - box.min.y)); astronautProto = m; });
+const buildSeats = () => {
+  seats.clear();
+  for (let i = 0; i < state.pax; i++) {
+    const col = i % 2 ? 1 : -1, row = Math.floor(i / 2);
+    const s = new THREE.Group(); s.position.set(col * 1.1, -1.3, 0.2 + row * 1.3); seats.add(s);
+    s.add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.15, 0.8), new THREE.MeshStandardMaterial({ color: 0x3355aa })));
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 0.15), new THREE.MeshStandardMaterial({ color: 0x3355aa })); back.position.set(0, 0.5, 0.35); s.add(back);
+    if (astronautProto) { const a = astronautProto.clone(); a.position.y = 0.08; a.rotation.y = Math.PI; s.add(a); }
+    s.add(label(state.names[i] || `${i + 1}人目`, 1.4));
+  }
+};
+// lunar module
+const lm = new THREE.Group(); lm.visible = false; scene.add(lm);
+gltf.load(`${NASA}/Apollo%20Lunar%20Module/Apollo%20Lunar%20Module.glb`, gl => { const m = gl.scene; const box = new THREE.Box3().setFromObject(m); m.scale.setScalar(1.6 / (box.max.y - box.min.y)); const b2 = new THREE.Box3().setFromObject(m); m.position.y = -b2.min.y; lm.add(m); },
+  undefined, () => { const b = new THREE.Mesh(new THREE.OctahedronGeometry(0.7), new THREE.MeshStandardMaterial({ color: 0xd4af37 })); b.position.y = 0.9; lm.add(b); });
+// dust
+const dustN = 200, dustArr = new Float32Array(dustN * 3), dustVel = [];
+const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute('position', new THREE.BufferAttribute(dustArr, 3));
+const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xbbbbbb, size: 0.08, transparent: true, opacity: 0 })); scene.add(dust);
+
+// look-around (drag) inside cockpit
+let yaw = 0, pitch = 0, drag = null, lookOn = false;
+addEventListener('pointerdown', e => { if (lookOn && e.target === $('gl')) drag = [e.clientX, e.clientY, yaw, pitch]; });
+addEventListener('pointermove', e => { if (!drag) return; yaw = drag[2] + (e.clientX - drag[0]) * 0.004; pitch = THREE.MathUtils.clamp(drag[3] + (e.clientY - drag[1]) * 0.004, -0.8, 0.8); });
+addEventListener('pointerup', () => drag = null);
+
+// ---------- phases ----------
+let phase = 'prep', pt = 0;          // pt = seconds in phase
+const fade = (o, cb) => { $('fade').style.opacity = o; if (cb) setTimeout(cb, 1200); };
+const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
+
+const startLaunch = () => {
+  stopCam(); show(null); buildSeats(); phase = 'count'; pt = 0;
+  // camera: on the ground beside the pad, looking at the rocket
+  rig.position.set(0, R_E + 0.4, 0); camera.position.set(2.4, 0.9, 3.2); camera.lookAt(0, R_E + 1.4, 0);
+  rig.rotation.set(0, 0, 0); camera.rotation.set(0, 0, 0); camera.position.set(0, 0, 0);
+  rig.position.set(2.4, R_E + 1.0, 3.2); aim(0, R_E + 1.4, 0);
+  $('count').style.display = 'block';
+};
+$('board').onclick = startLaunch;
+window.__go = { cockpit: () => { show(null); buildSeats(); startCockpit(); }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
+
+// quizzes (mission stamps)
+const QUIZ = [
+  { q: '月まで ロケットで なん日 かかる？', a: ['3時間', '3日', '3年'], ok: 1 },
+  { q: 'うちゅうから見た 地球は なに色？', a: ['赤', '青', '黄色'], ok: 1 },
+  { q: '月の重力は 地球の…？', a: ['おなじ', '6分の1', '2倍'], ok: 1 },
+];
+let quizIdx = 0, quizOpen = false, journeyT = 0;
+const askQuiz = () => {
+  const q = QUIZ[quizIdx]; quizOpen = true; $('qq').textContent = `⭐ ミッション${quizIdx + 1}：${q.q}`;
+  $('qo').innerHTML = q.a.map((t, i) => `<button data-i="${i}">${t}</button>`).join('');
+  $('qo').querySelectorAll('button').forEach(b => b.onclick = () => { const ok = +b.dataset.i === q.ok; b.classList.add(ok ? 'ok' : 'ng');
+    if (ok) { state.stars++; $('qo').querySelectorAll('button').forEach(x => x.disabled = true); setTimeout(() => { $('quiz').style.display = 'none'; quizOpen = false; quizIdx++; }, 900); } });
+  $('quiz').style.display = 'block';
+};
+const stars = () => '⭐'.repeat(state.stars) + '☆'.repeat(3 - state.stars);
+
+const JOURNEY_S = 180;                       // 3 days = 3 minutes at 1×
+const startCockpit = () => {
+  phase = 'fly'; pt = 0; journeyT = 0; cockpit.visible = true; lookOn = true; flame.visible = false; rocket.visible = false;
+  $('count').style.display = 'none'; $('jhud').style.display = 'block'; $('map').style.display = 'block'; $('hint').style.display = 'block';
+  rig.position.set(0, R_E + 6, 0); camera.position.set(0, 0, 0);
+};
+const startLanding = () => {
+  phase = 'land'; pt = 0; cockpit.visible = false; lookOn = false; lm.visible = true; $('quiz').style.display = 'none'; quizOpen = false;
+  $('jhud').style.display = 'none'; $('map').style.display = 'none'; $('hint').style.display = 'none';
+  // surface point on the moon facing earth-ish; rig = side camera
+  landPt.copy(MOON_POS).add(tmp.set(0.8, 0.35, 0.5).normalize().multiplyScalar(R_M));   // sunlit side
+  landN.copy(landPt).sub(MOON_POS).normalize();
+  for (let i = 0; i < dustN; i++) { dustArr.set([landPt.x, landPt.y, landPt.z], i * 3); dustVel.push(new THREE.Vector3()); }
+};
+const landPt = new THREE.Vector3(), landN = new THREE.Vector3();
+$('goHome').onclick = () => { fade(1, () => { phase = 'home'; pt = 0; lm.visible = false; dust.material.opacity = 0; cockpit.visible = true; lookOn = true; show(null); $('jhud').style.display = 'block'; fade(0); }); };
+$('again').onclick = () => alert('火星はこれからつくります 🚧');
+$('restart').onclick = () => location.reload();
+
+const clock = new THREE.Clock();
+function animate() {
+  const raw = clock.getDelta(), dt = Math.min(raw, 0.05); pt += raw;
+  earth.rotation.y += dt * 0.01; clouds.rotation.y += dt * 0.004; moon.rotation.y += dt * 0.002;
+  cockpit.traverse(o => { if (o.userData.blink !== undefined) o.visible = Math.sin(pt * 3 + o.userData.blink) > -0.3; });
+
+  if (phase === 'count') {
+    const n = 10 - Math.floor(pt);
+    $('count').textContent = n > 0 ? n : 'LIFTOFF! 🔥';
+    if (pt > 8.5) { flame.visible = true; flame.scale.set(0.9 + Math.random() * .3, 1.6 + Math.random() * .6, 1); rig.position.x += (Math.random() - .5) * .02; }
+    if (pt >= 11) { phase = 'launch'; pt = 0; $('count').style.display = 'none'; }
+  }
+  if (phase === 'launch') {
+    const e = pt * pt * 0.06;                      // accelerating ascent
+    rocket.position.y = e; flame.scale.set(1 + Math.random() * .4, 2.2 + Math.random() * .8, 1);
+    rig.position.set(2.4 + e * 0.15, R_E + 1.0 + e * 0.9, 3.2 + e * 0.35); aim(0, R_E + 1.4 + e, 0);
+    dome.material.opacity = THREE.MathUtils.clamp(1 - e / 14, 0, 1);
+    if (pt > 14) { fade(1, () => { startCockpit(); fade(0); }); phase = 'wait'; }
+  }
+  if (phase === 'fly' || phase === 'home') {
+    if (!quizOpen) journeyT += dt * state.speed / JOURNEY_S;
+    const t = THREE.MathUtils.clamp(journeyT, 0, 1), s = t * t * (3 - 2 * t);
+    const from = tmp.set(0, R_E + 6, 0), to = tmp2.copy(MOON_POS).add(new THREE.Vector3(0, 2, R_M + 6));
+    if (phase === 'fly') { rig.position.lerpVectors(from, to, s); aim(MOON_POS); }
+    else { rig.position.lerpVectors(to, from, s); aim(0, 0, 0); }
+    camera.rotation.set(-pitch, -yaw, 0, 'YXZ');
+    dome.material.opacity = 0;
+    const day = (t * 3).toFixed(1), km = Math.round(t * 384400 / 1000) * 1000;
+    $('jhud').innerHTML = phase === 'fly'
+      ? `🗓 <b>${day}日目</b> / 3日<br>📏 地球から <b>${km.toLocaleString()} km</b><br>${stars()}<br><button id="ff" style="font-size:13px;padding:4px 10px">⏩ ${state.speed}×</button>`
+      : `🌍 地球へ かえっています…<br>${stars()}`;
+    const ff = $('ff'); if (ff) ff.onclick = () => { state.speed = state.speed === 1 ? 3 : state.speed === 3 ? 8 : 1; };
+    $('mdot').style.left = (phase === 'fly' ? t : 1 - t) * 100 + '%'; $('mtxt').textContent = `${Math.round((phase === 'fly' ? t : 1 - t) * 100)}%`;
+    if (phase === 'fly' && !quizOpen && quizIdx < 3 && t > [0.2, 0.5, 0.8][quizIdx]) askQuiz();
+    if (phase === 'fly' && t >= 1) { fade(1, () => { startLanding(); fade(0); }); phase = 'wait'; }
+    if (phase === 'home' && t >= 1) { phase = 'done'; $('jhud').style.display = 'none'; cockpit.visible = false; lookOn = false; rig.position.set(20, R_E + 30, 45); aim(0, 0, 0); camera.rotation.set(0, 0, 0);
+      $('doneStars').textContent = stars(); $('doneMsg').textContent = `${state.pax}人のうちゅうひこうし、月の旅 だいせいこう！ ミッション ${state.stars}/3 クリア`;
+      try { localStorage.setItem('unlock', 'mars'); } catch {} show('s-done'); }
+  }
+  if (phase === 'land') {
+    const T = 10, k = THREE.MathUtils.clamp(pt / T, 0, 1), h = (1 - k) * (1 - k) * 12;   // descend 12 -> 0
+    lm.position.copy(landPt).addScaledVector(landN, h); lm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), landN);
+    // camera: hover beside, slightly above, watching the LM
+    rig.position.copy(landPt).addScaledVector(landN, 1.2 + h * 0.6).add(tmp.crossVectors(landN, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(4));
+    aim(lm.position); camera.rotation.set(0, 0, 0);
+    if (k > 0.85 && dust.material.opacity === 0) { dust.material.opacity = 0.9; for (let i = 0; i < dustN; i++) { const a = Math.random() * Math.PI * 2; dustVel[i].crossVectors(landN, new THREE.Vector3(Math.cos(a), 0, Math.sin(a))).normalize().multiplyScalar(1 + Math.random() * 3).addScaledVector(landN, Math.random() * 1.5); } }
+    if (dust.material.opacity > 0) { for (let i = 0; i < dustN; i++) { dustArr[i * 3] += dustVel[i].x * dt; dustArr[i * 3 + 1] += dustVel[i].y * dt; dustArr[i * 3 + 2] += dustVel[i].z * dt; dustVel[i].addScaledVector(landN, -1.5 * dt); } dustGeo.attributes.position.needsUpdate = true; dust.material.opacity = Math.max(0, dust.material.opacity - dt * 0.35); }
+    if (k >= 1 && pt < T + 0.4) rig.position.y += (Math.random() - .5) * 0.05;   // touchdown shake
+    if (pt > T + 2.5) { phase = 'landed'; $('landStars').textContent = stars(); show('s-land'); }
+  }
+  if (phase === 'landed') { rig.position.copy(landPt).addScaledVector(landN, 1.2).add(tmp.crossVectors(landN, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(4 + Math.sin(pt * .3))); aim(lm.position); }
+
+  renderer.render(scene, camera); labelR.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+animate();
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); labelR.setSize(innerWidth, innerHeight); });
+</script>
+</html>
