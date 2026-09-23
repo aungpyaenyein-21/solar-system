@@ -486,7 +486,7 @@ const updateScreens = (rt, day, km, pct, spd, roll, pitchA) => {
 
 // ---- cockpit: downloaded model (Sketchfab "Sci-fi Spaceship Cockpit 02" by NotARealStudio, CC-BY 4.0),
 // compressed to 1.1 MB with gltf-transform (1k webp textures + draco).
-const EYE = new THREE.Vector3(0, 1.53, -0.18);      // pilot's eye inside the model (model faces +Z); sits high and back so the canopy, not the console, fills the view
+const EYE = new THREE.Vector3(0, 1.60, -0.18);      // pilot's eye inside the model (model faces +Z); sits high and back so the canopy, not the console, fills the view
 gltf.load('assets/cockpit.glb', g => {
   const m = g.scene;
   m.rotation.y = Math.PI;                            // model +Z forward -> rig -Z (the camera's forward)
@@ -578,7 +578,7 @@ const startCockpit = () => {
   phase = 'fly'; pt = 0; journeyT = 0; cockpit.visible = true; lookOn = true; flame.visible = false; rocket.visible = false;
   $('count').style.display = 'none'; $('jhud').style.display = 'block'; $('map').style.display = 'block'; $('hint').style.display = 'block'; $('lhud').style.display = 'none';
   scene.fog.near = 1e6; scene.fog.far = 2e6; deck.visible = false;
-  rig.position.copy(JOURNEY_FROM); camera.position.set(0, 0, 0); yaw = 0; pitch = -0.05; swing = 1;   // sit the console low in frame; the canopy gets the screen   // window starts on Earth, then the craft swings round to the Moon
+  rig.position.copy(JOURNEY_FROM); camera.position.set(0, 0, 0); yaw = 0; pitch = -0.01; swing = 1;   // sit the console low in frame; the canopy gets the screen   // window starts on Earth, then the craft swings round to the Moon
 };
 const startLanding = () => {
   phase = 'land'; pt = 0; cockpit.visible = false; lookOn = false; lm.visible = true; $('quiz').style.display = 'none'; quizOpen = false;
