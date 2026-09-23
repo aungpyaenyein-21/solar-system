@@ -60,7 +60,8 @@
   #cap b { display:block; font-size:30px; color:#fff; letter-spacing:6px; text-shadow:0 2px 18px #000; }
   #cap span { font-size:14px; color:#bcd; letter-spacing:2px; }
   #shot { position:fixed; right:14px; bottom:14px; z-index:6; display:none; font-size:14px; padding:9px 16px; }
-  body.clean #cap, body.clean #shot { display:none !important; }
+  #skip { position:fixed; right:14px; top:120px; z-index:6; display:none; font-size:13px; padding:7px 14px; background:#242a44; color:#fff; border-color:#3a4370; }
+  body.clean #cap, body.clean #shot, body.clean #skip { display:none !important; }
   #map { top:14px; right:14px; background:#000a; padding:10px 16px; border-radius:12px; font-size:15px; display:none; min-width:220px; }
   #map .track { height:8px; background:#2b3358; border-radius:4px; position:relative; margin:8px 0; }
   #map .dot { position:absolute; top:-6px; width:20px; height:20px; border-radius:50%; background:var(--acc); transform:translateX(-50%); }
@@ -95,6 +96,7 @@
     <div class="names" id="names"></div>
   </div>
   <button class="big" id="buy">チケットを発行</button>
+  <button class="sec" id="skipTicket">▶▶ 操縦室をすぐ見る（打ち上げをスキップ）</button>
 </div></div>
 
 <!-- ② チケット印刷 -->
@@ -141,6 +143,7 @@
 <div class="hud" id="lhud"></div>
 <div class="hud" id="cap"><b>地球</b><span>直径 12,742 km — わたしたちの家</span></div>
 <button id="shot">記念写真を保存</button>
+<button id="skip">スキップ ▶▶</button>
 <div class="hud" id="map"><div>EARTH <span style="float:right">MOON</span></div><div class="track"><div class="dot" id="mdot"></div></div><div id="mtxt"></div></div>
 <div class="hud" id="hint" style="display:none">ドラッグで窓の外を見まわせます</div>
 <div class="card" id="quiz"><h2 id="qq"></h2><div class="opts" id="qo"></div></div>
@@ -160,10 +163,12 @@ const E8K = 'https://cdn.jsdelivr.net/gh/CesarFRR/astro-animations@main/public/t
 window.__J = () => ({ phase, rig: rig.position.toArray(), rocketKids: rocket.children.length, cam: camera.rotation.toArray(), ck: cockpit.visible, ckn: cockpit.children.length, ckp: cockpit.parent === rig, cp: camera.parent === rig, camPos: camera.position.toArray() });
 window.__S = () => ({ scene, camera, rig, cockpit, THREE, earth });
 const state = { dest: 'moon', pax: 2, names: [], photos: [], stars: 0, speed: 1 };
+const STAGE = new URLSearchParams(location.search).get('stage');   // ?stage=cockpit jumps straight in
 // textures + models are ~5 MB; hold the launch until they are in
 let assetsReady = false;
 THREE.DefaultLoadingManager.onProgress = (u, n, total) => $('loadbar').firstElementChild.style.width = (n / total * 100) + '%';
-THREE.DefaultLoadingManager.onLoad = () => { assetsReady = true; $('loadbar').style.opacity = 0; const b = $('board'); b.disabled = false; b.textContent = '搭乗して発射準備へ'; };
+THREE.DefaultLoadingManager.onLoad = () => { assetsReady = true; $('loadbar').style.opacity = 0; const b = $('board'); b.disabled = false; b.textContent = '搭乗して発射準備へ';
+  $('skipTicket').disabled = false; if (STAGE === 'cockpit') skipToCockpit(); };
 
 // ---------- ① ticket ----------
 const renderNames = () => { $('names').innerHTML = Array.from({ length: state.pax }, (_, i) =>
@@ -601,12 +606,17 @@ const startLaunch = () => {
   // camera: on the ground beside the pad, looking at the rocket
   rig.rotation.set(0, 0, 0); camera.rotation.set(0, 0, 0); camera.position.set(0, 0, 0);
   rig.position.set(6.5, 0.35, 8.5); pad.localToWorld(rig.position); aimUp(pad.localToWorld(rocketTmp.set(0, 0.8, 0)), PADN);
-  dome.material.opacity = 1; dome.material.color.setHex(0x7fbcff); groundCap.material.opacity = 1; groundCap.visible = true;
+  dome.material.opacity = 1; dome.material.color.setHex(0x7fbcff); groundCap.material.opacity = 1; groundCap.visible = true; $('skip').style.display = 'block';
   scene.fog.color.setHex(0x9fc4e8); scene.fog.near = 3; scene.fog.far = 45; deck.visible = true; trail.visible = true; $('lhud').style.display = 'none';
   $('count').style.display = 'block';
 };
 $('board').disabled = !assetsReady; if (!assetsReady) $('board').textContent = '読み込み中…';
 $('board').onclick = startLaunch;
+// skip: drop straight into the cruise without the 100 s launch sequence
+const skipToCockpit = () => { stopCam(); show(null); buildSeats(); flame.visible = false; trail.visible = false; startCockpit(); };
+$('skipTicket').disabled = !assetsReady;
+$('skipTicket').onclick = skipToCockpit;
+$('skip').onclick = skipToCockpit;
 window.__go = { depart: () => { show(null); buildSeats(); startLaunch(); startDepart(); }, launch: t => { show(null); buildSeats(); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); buildSeats(); startCockpit(); }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
 
 // quizzes (mission stamps)
@@ -637,7 +647,7 @@ const startDepart = () => {                  // ④ camera lets the rocket go an
   setTimeout(() => $('cap').style.opacity = 1, 13000);
 };
 const startCockpit = () => {
-  $('cap').style.display = 'none'; $('cap').style.opacity = 0; $('shot').style.display = 'none';
+  $('cap').style.display = 'none'; $('cap').style.opacity = 0; $('shot').style.display = 'none'; $('skip').style.display = 'none';
   phase = 'fly'; pt = 0; journeyT = 0; cockpit.visible = true; lookOn = true; flame.visible = false; rocket.visible = false;
   $('count').style.display = 'none'; $('jhud').style.display = 'block'; $('map').style.display = 'block'; $('hint').style.display = 'block'; $('lhud').style.display = 'none';
   scene.fog.near = 1e6; scene.fog.far = 2e6; deck.visible = false;
