@@ -230,7 +230,8 @@ const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.05, 4
 const loader = new THREE.TextureLoader(), gltf = new GLTFLoader();
 const draco = new DRACOLoader(); draco.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/'); gltf.setDRACOLoader(draco);   // NASA GLBs are Draco-compressed
 const tex = (u, srgb = true) => { const t = loader.load(u); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
-const sky = tex(`${HD}/2k_stars_milky_way.jpg`); sky.mapping = THREE.EquirectangularReflectionMapping; scene.background = sky;
+const sky = tex('https://cdn.jsdelivr.net/gh/AhmetFurkanUtsal/space@main/Assets/Textures/8k_stars_milky_way.jpg');   // same 8k sky as index.html
+sky.mapping = THREE.EquirectangularReflectionMapping; scene.background = sky;
 const SUN_DIR = new THREE.Vector3(0.925, 0.324, 0.231).normalize();
 const sun = new THREE.DirectionalLight(0xffffff, 2.6); sun.position.copy(SUN_DIR).multiplyScalar(6000);
 scene.add(sun, new THREE.AmbientLight(0x334, 0.35));
