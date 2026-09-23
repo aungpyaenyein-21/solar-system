@@ -66,6 +66,8 @@
   #quiz .opts button.ok { background:#3ad07a; color:#052; }
   #quiz .opts button.ng { background:#e05555; color:#fff; }
   .stars { font-size:28px; letter-spacing:4px; }
+  #loadbar { position:fixed; top:0; left:0; right:0; height:3px; background:#1a2038; z-index:9; transition:opacity .6s; }
+  #loadbar i { display:block; height:100%; width:0; background:var(--acc); transition:width .25s; }
   #fade { position:fixed; inset:0; background:#000; opacity:0; pointer-events:none; z-index:8; transition:opacity 1.2s; }
   #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:8; }
   @media print { body * { visibility:hidden; } #print-area, #print-area * { visibility:visible; } #print-area { position:absolute; left:0; top:0; width:100%; } .ticket { box-shadow:none; border:1px solid #999; } }
@@ -73,6 +75,7 @@
 
 <canvas class="gl" id="gl"></canvas>
 <div id="fade"></div><div id="flash"></div>
+<div id="loadbar"><i></i></div>
 
 <!-- ① チケット -->
 <div class="screen on" id="s-ticket"><div class="center">
@@ -146,9 +149,14 @@ const $ = id => document.getElementById(id);
 const B = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/planets';
 const HD = 'https://cdn.jsdelivr.net/gh/Wahid-heisenberg/solar-system-simulation@main/textures';
 const NASA = 'https://cdn.jsdelivr.net/gh/nasa/NASA-3D-Resources@master/3D%20Models';
+const E8K = 'https://cdn.jsdelivr.net/gh/CesarFRR/astro-animations@main/public/textures/max';   // 8k day / 4k night+clouds / 2k normal+specular (webp, ~4.5 MB total)
 window.__J = () => ({ phase, rig: rig.position.toArray(), rocketKids: rocket.children.length, cam: camera.rotation.toArray(), ck: cockpit.visible, ckn: cockpit.children.length, ckp: cockpit.parent === rig, cp: camera.parent === rig, camPos: camera.position.toArray() });
 window.__S = () => ({ scene, camera, rig, cockpit, THREE, earth });
 const state = { dest: 'moon', pax: 2, names: [], photos: [], stars: 0, speed: 1 };
+// textures + models are ~5 MB; hold the launch until they are in
+let assetsReady = false;
+THREE.DefaultLoadingManager.onProgress = (u, n, total) => $('loadbar').firstElementChild.style.width = (n / total * 100) + '%';
+THREE.DefaultLoadingManager.onLoad = () => { assetsReady = true; $('loadbar').style.opacity = 0; const b = $('board'); b.disabled = false; b.textContent = '搭乗して発射準備へ'; };
 
 // ---------- ① ticket ----------
 const renderNames = () => { $('names').innerHTML = Array.from({ length: state.pax }, (_, i) =>
@@ -214,34 +222,105 @@ const loader = new THREE.TextureLoader(), gltf = new GLTFLoader();
 const draco = new DRACOLoader(); draco.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/'); gltf.setDRACOLoader(draco);   // NASA GLBs are Draco-compressed
 const tex = (u, srgb = true) => { const t = loader.load(u); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
 const sky = tex(`${HD}/2k_stars_milky_way.jpg`); sky.mapping = THREE.EquirectangularReflectionMapping; scene.background = sky;
-const sun = new THREE.DirectionalLight(0xffffff, 2.6); sun.position.set(800, 3000, 900); scene.add(sun, new THREE.AmbientLight(0x334, 0.6));   // sun from above: Earth limb ahead and the Moon both lit
+const SUN_DIR = new THREE.Vector3(0.925, 0.324, 0.231).normalize();
+const sun = new THREE.DirectionalLight(0xffffff, 2.6); sun.position.copy(SUN_DIR).multiplyScalar(6000);
+scene.add(sun, new THREE.AmbientLight(0x334, 0.35));
 
 // Scale: 1 unit ≈ 6.4 km. Earth r=1000, Moon r=270 (real 0.27×). ponytail: Moon distance compressed 60→9 Earth radii for a 3-minute ride.
-const R_E = 1000, R_M = 270, MOON_POS = new THREE.Vector3(1500, 300, -9000), KM = 6371 / R_E;
-const earth = new THREE.Mesh(new THREE.SphereGeometry(R_E, 192, 192), new THREE.MeshPhongMaterial({
-  map: tex(`${B}/earth_atmos_2048.jpg`), specularMap: tex(`${B}/earth_specular_2048.jpg`, false), normalMap: tex(`${B}/earth_normal_2048.jpg`, false),
-  emissiveMap: tex(`${B}/earth_lights_2048.png`), emissive: new THREE.Color(0xffee88), emissiveIntensity: 0.15, specular: new THREE.Color(0x444444), shininess: 18 }));
+const R_E = 1000, R_M = 270, KM = 6371 / R_E;
+// Moon roughly perpendicular to the sun (gibbous): Earth keeps a lit crescent and the Moon has a sunlit near side.
+const MOON_DIR = new THREE.Vector3().crossVectors(SUN_DIR, new THREE.Vector3(0, 1, 0)).normalize().addScaledVector(SUN_DIR, -0.22).normalize();
+const MOON_POS = MOON_DIR.clone().multiplyScalar(9000);
+const SPHERE_VS = `
+  varying vec2 vUv; varying vec3 vN; varying vec3 vP; varying vec3 vVN;
+  void main(){ vUv = uv; vN = normalize(mat3(modelMatrix) * normal); vVN = normalize(normalMatrix * normal);
+    vec4 wp = modelMatrix * vec4(position, 1.0); vP = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp; }`;
+const cloudTex = tex(`${E8K}/4k_earth_clouds.webp`, false);
+const earthU = {
+  dayMap:  { value: tex(`${E8K}/8k_earth_daymap.webp`) },
+  nightMap:{ value: tex(`${E8K}/4k_earth_nightmap.webp`) },
+  cloudMap:{ value: cloudTex },
+  specMap: { value: tex(`${E8K}/earth_specular_2048.jpg`, false) },
+  normMap: { value: tex(`${E8K}/earth_normal_2048.jpg`, false) },
+  sunDir:  { value: SUN_DIR },
+  cloudU:  { value: 0 },
+};
+// Day/night terminator, city lights only on the dark side, cloud shadow on the ground, ocean sun-glint.
+const earth = new THREE.Mesh(new THREE.SphereGeometry(R_E, 256, 256), new THREE.ShaderMaterial({
+  uniforms: earthU, vertexShader: SPHERE_VS,
+  fragmentShader: `
+    uniform sampler2D dayMap, nightMap, cloudMap, specMap, normMap;
+    uniform vec3 sunDir; uniform float cloudU;
+    varying vec2 vUv; varying vec3 vN; varying vec3 vP; varying vec3 vVN;
+    void main(){
+      vec3 N0 = normalize(vN);
+      vec3 T = normalize(cross(vec3(0.0, 1.0, 0.0), N0));      // east: exact tangent frame for an equirectangular sphere
+      vec3 Bt = cross(N0, T);                                   // north
+      vec3 m = texture2D(normMap, vUv).xyz * 2.0 - 1.0;
+      vec3 N = normalize(N0 + (T * m.x + Bt * m.y) * 0.45);
+      vec3 V = normalize(cameraPosition - vP);
+      float s = dot(N, sunDir);
+      float day = smoothstep(-0.10, 0.22, s);
+      float cloud = smoothstep(0.12, 0.62, texture2D(cloudMap, vec2(fract(vUv.x + cloudU), vUv.y)).r);
+      vec3 col = texture2D(dayMap, vUv).rgb * 1.15 * (1.0 - 0.45 * cloud) * (0.025 + 0.975 * day);
+      col += texture2D(nightMap, vUv).rgb * (1.0 - day) * (1.0 - 0.75 * cloud) * 1.25;
+      vec3 H = normalize(sunDir + V);
+      col += vec3(1.0, 0.96, 0.88) * pow(max(dot(N0, H), 0.0), 140.0) * texture2D(specMap, vUv).r * day * 2.2;
+      gl_FragColor = vec4(col, 1.0);
+    }` }));
 scene.add(earth);
-const clouds = new THREE.Mesh(new THREE.SphereGeometry(R_E * 1.004, 192, 192), new THREE.MeshPhongMaterial({ map: tex(`${B}/earth_clouds_1024.png`), transparent: true, depthWrite: false }));
-earth.add(clouds);
-const glowMat = c => new THREE.ShaderMaterial({ uniforms: { c: { value: new THREE.Color(c) } },
-  vertexShader: 'varying float vi; void main(){ vec3 n=normalize(normalMatrix*normal); vi=pow(0.62-dot(n,vec3(0,0,1)),3.0); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-  fragmentShader: 'uniform vec3 c; varying float vi; void main(){ float i=clamp(vi,0.0,1.0); gl_FragColor=vec4(c*i,i);}', side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
-const glow = new THREE.Mesh(new THREE.SphereGeometry(R_E, 64, 64), glowMat(0x3399ff)); glow.scale.setScalar(1.025); earth.add(glow);
+// cloud layer: own sphere so it drifts over the ground and catches the same terminator
+const clouds = new THREE.Mesh(new THREE.SphereGeometry(R_E * 1.0045, 160, 160), new THREE.ShaderMaterial({
+  uniforms: { cloudMap: { value: cloudTex }, sunDir: { value: SUN_DIR } }, vertexShader: SPHERE_VS,
+  fragmentShader: `
+    uniform sampler2D cloudMap; uniform vec3 sunDir;
+    varying vec2 vUv; varying vec3 vN; varying vec3 vP; varying vec3 vVN;
+    void main(){
+      float a = smoothstep(0.12, 0.62, texture2D(cloudMap, vUv).r);
+      if (a < 0.01) discard;
+      float day = smoothstep(-0.18, 0.28, dot(normalize(vN), sunDir));
+      vec3 col = mix(vec3(0.05, 0.07, 0.11), vec3(1.0), day);
+      gl_FragColor = vec4(col, a * 0.95);
+    }`, transparent: true, depthWrite: false }));
+scene.add(clouds);
+// atmosphere: density from the actual path length through the shell, so the limb fades like real air
+const R_ATM = R_E * 1.025;
+const glow = new THREE.Mesh(new THREE.SphereGeometry(R_ATM, 96, 96), new THREE.ShaderMaterial({
+  uniforms: { sunDir: { value: SUN_DIR }, rA: { value: R_ATM }, rE: { value: R_E } }, vertexShader: SPHERE_VS,
+  fragmentShader: `
+    uniform vec3 sunDir; uniform float rA, rE;
+    varying vec2 vUv; varying vec3 vN; varying vec3 vP; varying vec3 vVN;
+    void main(){
+      vec3 rd = normalize(vP - cameraPosition);
+      float b = length(cross(cameraPosition, rd));          // how close this view ray passes to Earth's centre
+      float dens = pow(clamp((rA - b) / (rA - rE), 0.0, 1.0), 1.15);
+      float s = dot(normalize(vN), sunDir);
+      float lit = smoothstep(-0.35, 0.25, s);
+      float term = 1.0 - smoothstep(0.0, 0.45, abs(s));
+      vec3 col = mix(vec3(0.26, 0.50, 1.0), vec3(1.0, 0.42, 0.13), term * 0.85);
+      gl_FragColor = vec4(col * 1.25, dens * (lit * 0.94 + 0.06));
+    }`, side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+scene.add(glow);
 const moon = new THREE.Mesh(new THREE.SphereGeometry(R_M, 192, 192), new THREE.MeshStandardMaterial({ map: tex(`${HD}/2k_moon.jpg`), bumpMap: loader.load('https://cdn.jsdelivr.net/gh/jeromeetienne/threex.planets@master/images/moonbump1k.jpg'), bumpScale: 0.12, roughness: 1 }));
 moon.position.copy(MOON_POS); scene.add(moon);
 // sky dome: blue near ground, fades to space with altitude
 const dome = new THREE.Mesh(new THREE.SphereGeometry(R_E * 1.03, 64, 64), new THREE.MeshBasicMaterial({ color: 0x7fbcff, side: THREE.BackSide, transparent: true, opacity: 1, depthWrite: false }));
 scene.add(dome);
+scene.fog = new THREE.Fog(0x9fc4e8, 3, 45);   // ground haze; pushed to infinity once we leave the atmosphere
 // ground cap around the pad (the 2k Earth map is a blur at 6 km/px this close)
 const groundTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d');
-  x.fillStyle = '#6b6a4f'; x.fillRect(0, 0, 512, 512); for (let i = 0; i < 9000; i++) { x.fillStyle = `hsl(${60 + Math.random() * 40},${20 + Math.random() * 25}%,${28 + Math.random() * 22}%)`; x.fillRect(Math.random() * 512, Math.random() * 512, 2 + Math.random() * 5, 2 + Math.random() * 5); }
+  x.fillStyle = '#4e5638'; x.fillRect(0, 0, 512, 512);
+  for (const [n, r, a] of [[60, 90, .5], [180, 34, .4], [900, 12, .35], [6000, 4, .3]])      // large blotches -> fine speckle
+    for (let i = 0; i < n; i++) { x.globalAlpha = a; x.fillStyle = `hsl(${68 + Math.random() * 34},${14 + Math.random() * 26}%,${18 + Math.random() * 26}%)`;
+      x.beginPath(); x.arc(Math.random() * 512, Math.random() * 512, r * (.4 + Math.random()), 0, 6.3); x.fill(); }
+  x.globalAlpha = 1;
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(40, 40); t.colorSpace = THREE.SRGBColorSpace; return t; })();
 const groundCap = new THREE.Mesh(new THREE.SphereGeometry(R_E + 0.02, 256, 48, 0, Math.PI * 2, 0, 0.04), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1, transparent: true }));
 scene.add(groundCap);
 
 // launch pad on top of Earth
-const LAT = 28.5 * Math.PI / 180, LON = -80.6 * Math.PI / 180, UP = new THREE.Vector3(0, 1, 0);
+const LAT = 28.5 * Math.PI / 180, LON = -29.2 * Math.PI / 180, UP = new THREE.Vector3(0, 1, 0);   // Cape Canaveral latitude; longitude picked so the sun sits ~50° over the pad
 const PADN = new THREE.Vector3(Math.cos(LAT) * Math.cos(LON), Math.sin(LAT), Math.cos(LAT) * Math.sin(LON));   // surface normal at the launch site
 const pad = new THREE.Group(); pad.position.copy(PADN).multiplyScalar(R_E); pad.quaternion.setFromUnitVectors(UP, PADN); scene.add(pad);
 groundCap.quaternion.copy(pad.quaternion);
@@ -277,6 +356,14 @@ const trGeo = new THREE.BufferGeometry(); trGeo.setAttribute('position', new THR
 const trail = new THREE.Points(trGeo, new THREE.PointsMaterial({ color: 0xe9e4dc, size: 0.5, transparent: true, opacity: 0.55, depthWrite: false, map: puffTex })); trail.visible = false; scene.add(trail);
 for (let i = 0; i < TRN; i++) trArr[i * 3 + 1] = -1e5;
 const trailTmp = new THREE.Vector3();
+// cumulus deck over the launch site (1 u ≈ 6.4 km): the rocket climbs through it in the first ~15 s
+const deck = new THREE.Group(); pad.add(deck);
+for (let i = 0; i < 46; i++) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTex, color: 0xffffff, transparent: true, opacity: 0.55 + Math.random() * 0.3, depthWrite: false }));
+  const a = Math.random() * Math.PI * 2, r = 1.2 + Math.random() * 13;
+  sp.position.set(Math.cos(a) * r, 0.34 + Math.random() * 1.1, Math.sin(a) * r);   // 2–9 km: a cumulus deck, not ground fog
+  sp.scale.setScalar(0.8 + Math.random() * 2.4); deck.add(sp);
+}
 const stepTrail = (dt, emitAt, spread) => {
   if (emitAt) for (let n = 0; n < 4; n++) { const i = trHead = (trHead + 1) % TRN; trArr[i * 3] = emitAt.x + (Math.random() - .5) * spread; trArr[i * 3 + 1] = emitAt.y + (Math.random() - .5) * spread; trArr[i * 3 + 2] = emitAt.z + (Math.random() - .5) * spread; trLife[i] = 1; }
   for (let i = 0; i < TRN; i++) if (trLife[i] > 0) { trLife[i] -= dt * 0.05; trArr[i * 3] += (Math.random() - .5) * 0.02; if (trLife[i] <= 0) trArr[i * 3 + 1] = -1e5; }
@@ -369,9 +456,11 @@ const startLaunch = () => {
   // camera: on the ground beside the pad, looking at the rocket
   rig.rotation.set(0, 0, 0); camera.rotation.set(0, 0, 0); camera.position.set(0, 0, 0);
   rig.position.set(6.5, 0.35, 8.5); pad.localToWorld(rig.position); aimUp(pad.localToWorld(rocketTmp.set(0, 0.8, 0)), PADN);
-  dome.material.opacity = 1; dome.material.color.setHex(0x7fbcff); groundCap.material.opacity = 1; groundCap.visible = true; trail.visible = true; $('lhud').style.display = 'none';
+  dome.material.opacity = 1; dome.material.color.setHex(0x7fbcff); groundCap.material.opacity = 1; groundCap.visible = true;
+  scene.fog.color.setHex(0x9fc4e8); scene.fog.near = 3; scene.fog.far = 45; deck.visible = true; trail.visible = true; $('lhud').style.display = 'none';
   $('count').style.display = 'block';
 };
+$('board').disabled = !assetsReady; if (!assetsReady) $('board').textContent = '読み込み中…';
 $('board').onclick = startLaunch;
 window.__go = { launch: t => { show(null); buildSeats(); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); buildSeats(); startCockpit(); }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
 
@@ -395,14 +484,15 @@ const JOURNEY_S = 180;                       // 3 days = 3 minutes at 1×
 const startCockpit = () => {
   phase = 'fly'; pt = 0; journeyT = 0; cockpit.visible = true; lookOn = true; flame.visible = false; rocket.visible = false;
   $('count').style.display = 'none'; $('jhud').style.display = 'block'; $('map').style.display = 'block'; $('hint').style.display = 'block'; $('lhud').style.display = 'none';
+  scene.fog.near = 1e6; scene.fog.far = 2e6; deck.visible = false;
   rig.position.copy(PADN).multiplyScalar(R_E + 120); camera.position.set(0, 0, 0); yaw = 0; pitch = 0.32;   // start looking slightly down: Earth's limb fills the lower window
 };
 const startLanding = () => {
   phase = 'land'; pt = 0; cockpit.visible = false; lookOn = false; lm.visible = true; $('quiz').style.display = 'none'; quizOpen = false;
   $('jhud').style.display = 'none'; $('map').style.display = 'none'; $('hint').style.display = 'none';
   // surface point on the moon facing earth-ish; rig = side camera
-  landPt.copy(MOON_POS).add(tmp.set(0.8, 0.35, 0.5).normalize().multiplyScalar(R_M));   // sunlit side
-  landN.copy(landPt).sub(MOON_POS).normalize();
+  landN.copy(MOON_DIR).negate().addScaledVector(SUN_DIR, 0.8).normalize();   // near side ∩ sunlit side
+  landPt.copy(MOON_POS).addScaledVector(landN, R_M);
   if (!terrain) buildTerrain();
   for (let i = 0; i < dustN; i++) { dustArr.set([landPt.x, landPt.y, landPt.z], i * 3); dustVel.push(new THREE.Vector3()); }
 };
@@ -436,7 +526,10 @@ $('restart').onclick = () => location.reload();
 const clock = new THREE.Clock();
 function animate() {
   const raw = clock.getDelta(), dt = Math.min(raw, 0.05); pt += raw;
-  earth.rotation.y += dt * 0.01; clouds.rotation.y += dt * 0.004; moon.rotation.y += dt * 0.002;
+  glow.visible = rig.position.length() > R_ATM * 1.005;
+  const spin = (phase === 'count' || phase === 'launch') ? 0 : dt * 0.02;
+  earth.rotation.y += spin; clouds.rotation.y += spin + dt * 0.004; moon.rotation.y += dt * 0.002;
+  earthU.cloudU.value = (earth.rotation.y - clouds.rotation.y) / (Math.PI * 2);
   cockpit.traverse(o => { if (o.userData.blink !== undefined) o.visible = Math.sin(pt * 3 + o.userData.blink) > -0.3; });
 
   if (phase === 'count') {
@@ -452,7 +545,7 @@ function animate() {
     flame.scale.set(0.24 + Math.random() * .06, 1.2 + Math.random() * .4, 1);
     stepSmoke(dt, pt < 5);
     rocket.getWorldPosition(rocketW); trailTmp.set(0, -0.05, 0); rocket.localToWorld(trailTmp);
-    stepTrail(dt, trailTmp, 0.08 + e * 0.004); trail.material.size = 0.5 + e * 0.02;
+    stepTrail(dt, trailTmp, 0.05 + e * 0.003); trail.material.size = 0.3 + e * 0.012;
     if (pt < 14) {                                   // ① wide shot from the ground, camera pans up with the rocket
       rig.position.set(6.5, 0.35, 8.5); pad.localToWorld(rig.position); aimUp(rocketTmp.copy(rocketW).addScaledVector(PADN, 0.7), PADN);
     } else if (pt < 44) {                            // ② close chase beside the rocket: flame + exhaust column
@@ -463,6 +556,8 @@ function animate() {
     }
     dome.material.opacity = THREE.MathUtils.clamp(1 - e / 16, 0, 1);
     dome.material.color.setHex(0x7fbcff).lerp(new THREE.Color(0x0a1a3a), THREE.MathUtils.clamp(e / 16, 0, 1));
+    scene.fog.color.copy(dome.material.color); scene.fog.near = 3 + e * 6; scene.fog.far = 45 + e * 90;
+    deck.visible = e < 6;
     const altKm = e * KM, spd = Math.round(28000 * (1 - Math.exp(-pt / 28)));
     groundCap.material.opacity = THREE.MathUtils.clamp(1 - e / 30, 0, 1); groundCap.visible = groundCap.material.opacity > 0;   // hand the view over to the real Earth map
     $('lhud').style.display = 'block';
