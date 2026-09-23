@@ -76,6 +76,8 @@
   #pad button.thr { grid-area:1/1/2/2; background:#7a3b1acc; border-color:#c4642a; }
   body.clean #dhud, body.clean #pad { display:none !important; }
   #ohud b { color:var(--acc); }
+  #hideShip { position:fixed; right:14px; top:120px; z-index:6; display:none; font-size:13px; padding:7px 14px; background:#242a44; color:#fff; border-color:#3a4370; }
+  body.clean #hideShip { display:none !important; }
   body.clean #fact, body.clean #ohud { display:none !important; }
   #cap b { display:block; font-size:30px; color:#fff; letter-spacing:6px; text-shadow:0 2px 18px #000; }
   #cap span { font-size:14px; color:#bcd; letter-spacing:2px; }
@@ -167,6 +169,7 @@
 <div class="hud" id="cap"><b>地球</b><span>直径 12,742 km — わたしたちの家</span></div>
 <div id="fact"><h3></h3><canvas width="300" height="150"></canvas><p></p><button class="sec">つぎへ ▶</button></div>
 <div class="hud" id="ohud"></div>
+<button id="hideShip">🚀 機体を消す</button>
 <div class="hud" id="dhud"></div>
 <div id="pad"><button data-k="ArrowLeft">◀</button><button data-k="ArrowUp">▲</button><button data-k="ArrowDown">▼</button><button data-k="ArrowRight">▶</button><button data-k="Space" class="thr">🔥</button></div>
 <button id="shot">記念写真を保存</button>
@@ -673,8 +676,8 @@ const PINS = {
 const pinGroup = new THREE.Group(); pinGroup.visible = false; scene.add(pinGroup);
 for (const k in PINS) {
   const p = PINS[k], pos = latLon(p.lat, p.lon, R_M * 1.002);
-  const m = new THREE.Mesh(new THREE.SphereGeometry(1.6, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffcc55 }));
-  const lb = label(p.label, 4); m.position.copy(pos); m.add(lb); pinGroup.add(m); PINS[k].mesh = m; PINS[k].lab = lb;
+  const m = new THREE.Mesh(new THREE.SphereGeometry(5, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffcc55 }));
+  const lb = label(p.label, 9); m.position.copy(pos); m.add(lb); pinGroup.add(m); PINS[k].mesh = m; PINS[k].lab = lb;
 }
 let tourIdx = 0, orbitT = 0, factOpen = false;
 const pinTmp = new THREE.Vector3(), pinTmp2 = new THREE.Vector3();
@@ -690,8 +693,9 @@ const showFact = f => {
   if (f.draw) { cv.style.display = 'block'; f.draw(cv.getContext('2d')); } else cv.style.display = 'none';
   factEl.style.display = 'block'; requestAnimationFrame(() => factEl.classList.add('on'));
 };
+$('hideShip').onclick = e => { cockpit.visible = !cockpit.visible; e.target.textContent = cockpit.visible ? '🚀 機体を消す' : '🚀 機体を出す'; };
 factEl.querySelector('button').onclick = () => { factEl.classList.remove('on'); factOpen = false; setTimeout(() => factEl.style.display = 'none', 500); };
-const ORBIT_S = 95, ORBIT_R = R_M + 48;
+const ORBIT_S = 95, ORBIT_R = R_M * 2.8;   // whole disc ≈ 42° across, so the Moon fits the window
 // closed ground track eastward through the features the tour talks about
 const orbitCurve = new THREE.CatmullRomCurve3([
   [0, 0], [0.7, 23.5], [15, 80], [-33.7, 163.5], [-12, 220], [7.5, 301], [10, 340],
@@ -699,7 +703,7 @@ const orbitCurve = new THREE.CatmullRomCurve3([
 const startOrbit = () => {
   phase = 'orbit'; pt = 0; orbitT = 0; tourIdx = 0;
   cockpit.visible = true; lookOn = true; pinGroup.visible = true; orbitLamp.visible = true;
-  $('jhud').style.display = 'none'; $('map').style.display = 'none'; $('ohud').style.display = 'block';
+  $('jhud').style.display = 'none'; $('map').style.display = 'none'; $('ohud').style.display = 'block'; $('hideShip').style.display = 'block';
   yaw = 0; pitch = -0.01;
 };
 
@@ -846,7 +850,7 @@ function animate() {
   if (phase === 'fly' || phase === 'home') {
     if (!quizOpen) journeyT += dt * state.speed / JOURNEY_S;
     const t = THREE.MathUtils.clamp(journeyT, 0, 1), s = t * t * (3 - 2 * t);
-    const from = tmp.copy(JOURNEY_FROM), to = tmp2.copy(MOON_POS).add(new THREE.Vector3(-0.16, 0.1, 0.98).normalize().multiplyScalar(R_M + 40));
+    const from = tmp.copy(JOURNEY_FROM), to = tmp2.copy(orbitCurve.getPointAt(0));   // hand straight over to the orbit; a closer aim point would clip the Moon
     if (phase === 'fly') {
       rig.position.lerpVectors(from, to, s);
       if (swing > 0 && !drag) swing = Math.max(0, swing - dt / 12);
@@ -878,15 +882,14 @@ function animate() {
     if (!factOpen) orbitT += dt / ORBIT_S;                       // the tour pauses while a card is up
     const u = Math.min(orbitT, 0.999);
     rig.position.copy(orbitCurve.getPointAt(u));
-    aimTmp.copy(orbitCurve.getPointAt((u + 0.022) % 1)).sub(MOON_POS).normalize().multiplyScalar(R_M).add(MOON_POS);
-    aim(aimTmp.x, aimTmp.y, aimTmp.z); camera.rotation.set(-pitch, -yaw, 0, 'YXZ');
+    aim(MOON_POS.x, MOON_POS.y, MOON_POS.z); camera.rotation.set(-pitch, -yaw, 0, 'YXZ');
     orbitLamp.position.copy(rig.position);
     for (const k in PINS) { const pm = PINS[k].mesh;                      // hide pins on the far side of the globe
       pinTmp.copy(pm.position).sub(MOON_POS).normalize();
       pm.visible = PINS[k].lab.visible = pinTmp.dot(pinTmp2.copy(rig.position).sub(pm.position).normalize()) > 0.12; }
     if (tourIdx < TOUR.length && orbitT >= TOUR[tourIdx].at) showFact(TOUR[tourIdx++]);
     $('ohud').innerHTML = `🌕 月をまわっています<br><b>${Math.round(orbitT * 100)}%</b> / 1周　${tourIdx}/${TOUR.length}`;
-    if (orbitT >= 1) { fade(1, () => { $('ohud').style.display = 'none'; pinGroup.visible = false; startDescent(); fade(0); }); phase = 'wait'; }
+    if (orbitT >= 1) { fade(1, () => { $('ohud').style.display = $('hideShip').style.display = 'none'; pinGroup.visible = false; startDescent(); fade(0); }); phase = 'wait'; }
   }
   if (phase === 'descent') {
     if (!D.done) {
