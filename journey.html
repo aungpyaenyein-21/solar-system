@@ -45,6 +45,7 @@
   #print-area { display:flex; flex-direction:column; gap:16px; align-items:center; }
   /* photo */
   #suitCanvas { border-radius:14px; background:#111; }
+  .thumbs img { width:70px; height:125px; }
   .thumbs { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
   .thumbs img { width:70px; height:94px; object-fit:cover; border-radius:8px; border:2px solid #2b3358; }
   /* HUD */
@@ -100,7 +101,7 @@
   <div class="card"><h2 id="photoWho">1人目</h2>
     <div class="row"><input type="file" id="file" accept="image/*"><button class="sec" id="cam">📹 カメラでとる</button></div>
     <video id="v" playsinline muted style="display:none;width:240px;border-radius:12px"></video>
-    <canvas id="suitCanvas" width="300" height="400"></canvas>
+    <canvas id="suitCanvas" width="480" height="857" style="width:270px;height:482px"></canvas>
     <div class="row"><button id="snap" style="display:none">📸 パシャ！</button><button class="sec" id="okPhoto">OK つぎの人へ</button></div>
   </div>
   <div class="thumbs" id="thumbs"></div>
@@ -173,25 +174,24 @@ $('print').onclick = () => window.print();
 // ---------- ③ photo (2D spacesuit composite, stays in browser) ----------
 let cur = 0, src = null, stream = null;
 const sc = $('suitCanvas'), g = sc.getContext('2d');
+// Real Apollo 11 suit photo (NASA AS11-40-5903, public domain); the child's face replaces the gold visor.
+const suitImg = new Image(); suitImg.src = 'assets/suit.jpg';
+const VX = 230, VY = 152, VRX = 64, VRY = 70;                   // visor ellipse in the 480×857 canvas
 const drawSuit = () => {
-  g.clearRect(0, 0, 300, 400); g.fillStyle = '#0b0e1c'; g.fillRect(0, 0, 300, 400);
-  // stars
-  g.fillStyle = '#fff'; for (let i = 0; i < 60; i++) g.fillRect((i * 97) % 300, (i * 53) % 400, 2, 2);
-  // body
-  g.fillStyle = '#f4f4f4'; g.beginPath(); g.roundRect(70, 190, 160, 210, 40); g.fill();
-  g.fillStyle = '#e0e0e0'; g.fillRect(40, 200, 40, 150); g.fillRect(220, 200, 40, 150);   // arms
-  g.fillStyle = '#1b2a6b'; g.fillRect(110, 230, 80, 60); g.fillStyle = '#e33'; g.fillRect(120, 240, 20, 12);
-  g.fillStyle = '#5ad1ff'; g.fillRect(150, 240, 30, 12);
-  // helmet
-  g.fillStyle = '#ddd'; g.beginPath(); g.arc(150, 120, 92, 0, Math.PI * 2); g.fill();
-  g.save(); g.beginPath(); g.arc(150, 120, 74, 0, Math.PI * 2); g.clip();
-  if (src) { const r = Math.max(148 / src.width, 148 / src.height); const w = src.width * r, h = src.height * r; g.drawImage(src, 150 - w / 2, 120 - h / 2, w, h); }
-  else { g.fillStyle = '#334'; g.fillRect(0, 0, 300, 400); g.fillStyle = '#9ab'; g.font = '16px sans-serif'; g.textAlign = 'center'; g.fillText('写真をえらんでね', 150, 125); }
+  g.clearRect(0, 0, 480, 857);
+  if (suitImg.complete && suitImg.naturalWidth) g.drawImage(suitImg, 0, 0, 480, 857); else { g.fillStyle = '#222'; g.fillRect(0, 0, 480, 857); }
+  g.save(); g.beginPath(); g.ellipse(VX, VY, VRX, VRY, 0, 0, Math.PI * 2); g.clip();
+  if (src) { const r = Math.max(2 * VRX / src.width, 2 * VRY / src.height) * 1.15; const w = src.width * r, h = src.height * r; g.drawImage(src, VX - w / 2, VY - h / 2 + 6, w, h); }
+  else { g.fillStyle = '#0a0a0a'; g.fillRect(0, 0, 480, 857); g.fillStyle = '#9ab'; g.font = '15px sans-serif'; g.textAlign = 'center'; g.fillText('写真をえらんでね', VX, VY + 5); }
+  // glass: gold tint + highlight so the face reads as "behind the visor"
+  const gl = g.createLinearGradient(VX - VRX, VY - VRY, VX + VRX, VY + VRY); gl.addColorStop(0, 'rgba(255,220,120,0.28)'); gl.addColorStop(0.5, 'rgba(255,200,80,0.10)'); gl.addColorStop(1, 'rgba(120,80,20,0.35)');
+  g.fillStyle = gl; g.fillRect(0, 0, 480, 857);
+  g.fillStyle = 'rgba(255,255,255,0.22)'; g.beginPath(); g.ellipse(VX - 28, VY - 38, 30, 14, -0.5, 0, Math.PI * 2); g.fill();
   g.restore();
-  g.strokeStyle = '#fff'; g.lineWidth = 6; g.beginPath(); g.arc(150, 120, 76, 0, Math.PI * 2); g.stroke();
-  g.fillStyle = '#fff5'; g.beginPath(); g.ellipse(120, 90, 26, 14, -0.6, 0, Math.PI * 2); g.fill();   // visor glint
-  g.fillStyle = '#ffcc33'; g.font = 'bold 18px sans-serif'; g.textAlign = 'center'; g.fillText(state.names[cur] || '', 150, 385);
+  g.strokeStyle = 'rgba(40,30,10,0.6)'; g.lineWidth = 3; g.beginPath(); g.ellipse(VX, VY, VRX, VRY, 0, 0, Math.PI * 2); g.stroke();
+  const nm = state.names[cur] || ''; if (nm) { g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, 800, 480, 57); g.fillStyle = '#fff'; g.font = 'bold 26px sans-serif'; g.textAlign = 'center'; g.fillText(nm, 240, 838); }
 };
+suitImg.onload = drawSuit;
 drawSuit();
 $('file').onchange = e => { const f = e.target.files[0]; if (!f) return; const img = new Image(); img.onload = () => { src = img; drawSuit(); }; img.src = URL.createObjectURL(f); };
 $('cam').onclick = async () => { try { stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480 } }); $('v').srcObject = stream; $('v').style.display = 'block'; await $('v').play(); $('snap').style.display = ''; } catch (e) { alert('カメラが使えません（https が必要）'); } };
