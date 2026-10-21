@@ -92,6 +92,7 @@
   #ohud b { color:var(--acc); }
   #hideShip { position:fixed; right:14px; top:120px; z-index:6; display:none; font-size:13px; padding:7px 14px; background:#242a44; color:#fff; border-color:#3a4370; }
   body.clean #hideShip { display:none !important; }
+  #mute { position:fixed; right:14px; top:14px; z-index:6; display:none; font-size:15px; padding:7px 12px; background:#242a44; color:#fff; border-color:#3a4370; }
   body.clean #fact, body.clean #ohud { display:none !important; }
   #cap b { display:block; font-size:30px; color:#fff; letter-spacing:6px; text-shadow:0 2px 18px #000; }
   #cap span { font-size:14px; color:#bcd; letter-spacing:2px; }
@@ -201,6 +202,7 @@
 <div class="hud" id="ohud"></div>
 <button id="hideShip">🚀 機体を消す</button>
 <div class="hud" id="dhud"></div>
+<button id="mute">🔊</button>
 <div id="wpad"><button data-w="Fwd">↑ 歩く</button><button data-w="Jump" class="jump">⤴ ジャンプ</button><button id="endWalk">着陸船にもどる</button></div>
 <div id="pad">
   <button data-k="ThrUp" class="thr">🔥▲</button><button data-k="PitUp">機首▲</button><button data-k="Left">◀</button>
@@ -577,7 +579,11 @@ gltf.load('assets/cockpit.glb', g => {
 
 // lunar module
 const lm = new THREE.Group(); lm.visible = false; scene.add(lm);
-gltf.load(`${NASA}/Apollo%20Lunar%20Module/Apollo%20Lunar%20Module.glb`, gl => { const m = gl.scene; const box = new THREE.Box3().setFromObject(m); m.scale.setScalar(0.6 / (box.max.y - box.min.y)); const b2 = new THREE.Box3().setFromObject(m); m.position.y = -b2.min.y; lm.add(m); },
+const ascent = new THREE.Group(); lm.add(ascent);                          // the upper stage: it is what flies home
+const lmFlame = new THREE.Sprite(flame.material.clone()); lmFlame.position.y = 0.26; lmFlame.scale.set(0.14, 0.34, 1); lmFlame.visible = false; ascent.add(lmFlame);
+gltf.load(`${NASA}/Apollo%20Lunar%20Module/Apollo%20Lunar%20Module.glb`, gl => { const m = gl.scene; const box = new THREE.Box3().setFromObject(m); m.scale.setScalar(0.6 / (box.max.y - box.min.y)); const b2 = new THREE.Box3().setFromObject(m); m.position.y = -b2.min.y; lm.add(m);
+  // ponytail: the model has no stage names, so everything whose bottom sits above the descent stage (45 % up) is the ascent stage
+  m.updateMatrixWorld(true); const up = []; m.traverse(o => { if (o.isMesh && new THREE.Box3().setFromObject(o).min.y > 0.27) up.push(o); }); up.forEach(o => ascent.attach(o)); },
   undefined, () => { const b = new THREE.Mesh(new THREE.OctahedronGeometry(0.7), new THREE.MeshStandardMaterial({ color: 0xd4af37 })); b.position.y = 0.9; lm.add(b); });
 // command module left in orbit — ponytail: exaggerated like the LM, at true scale a real one is a speck
 const mother = new THREE.Group(); mother.visible = false; scene.add(mother);
@@ -618,7 +624,7 @@ const skipToCockpit = () => { stopCam(); show(null); flame.visible = false; trai
 $('skipTicket').disabled = !assetsReady;
 $('skipTicket').onclick = skipToCockpit;
 $('skip').onclick = skipToCockpit;
-window.__go = { walk: () => { if (phase !== 'descent') { show(null); startDescent(false); startFinal(); } Object.assign(D, { alt: 0, s: 2, x: 1, done: true }); lmPos(lm.position); phase = 'landed'; startWalk(); }, descent: hard => { show(null); startDescent(hard !== false); }, final: o => { if (phase !== 'descent') { show(null); startDescent(!!(o && o.hard)); } startFinal(); Object.assign(D, { prop: 2000 }, o || {}); }, depart: () => { show(null); startLaunch(); startDepart(); }, launch: t => { show(null); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); startCockpit(); }, orbit: u => { show(null); startCockpit(); startOrbit(); orbitT = u || 0; tourIdx = TOUR.findIndex(f => f.at > (u || 0)); if (tourIdx < 0) tourIdx = TOUR.length; }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
+window.__go = { ascent: () => { if (phase !== 'descent') { show(null); startDescent(false); startFinal(); } Object.assign(D, { alt: 0, s: 2, x: 1, done: true }); startAscent(); }, walk: () => { if (phase !== 'descent') { show(null); startDescent(false); startFinal(); } Object.assign(D, { alt: 0, s: 2, x: 1, done: true }); lmPos(lm.position); phase = 'landed'; startWalk(); }, descent: hard => { show(null); startDescent(hard !== false); }, final: o => { if (phase !== 'descent') { show(null); startDescent(!!(o && o.hard)); } startFinal(); Object.assign(D, { prop: 2000 }, o || {}); }, depart: () => { show(null); startLaunch(); startDepart(); }, launch: t => { show(null); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); startCockpit(); }, orbit: u => { show(null); startCockpit(); startOrbit(); orbitT = u || 0; tourIdx = TOUR.findIndex(f => f.at > (u || 0)); if (tourIdx < 0) tourIdx = TOUR.length; }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
 
 // quizzes (mission stamps)
 // asked on the way home, about what the tour actually showed
@@ -705,7 +711,7 @@ const TOUR = [
   { at: 0.44, title: '月の渦 — 英知の海', body: '白い渦もよう「ルナー・スワール」。地殻に残った磁石が太陽風をはね返すので、まわりのように黒く焼けない。地形のでこぼこは無い。', pin: 'ingenii' },
   { at: 0.58, title: '月の中身', body: '地殻は地球側が約 30 km、裏側は約 60 km と厚い。だから裏側には「海」がほとんどない。中心には鉄の核。', draw: drawInside },
   { at: 0.74, title: 'ライナー・ガンマ', body: 'いちばん有名な渦。大きさ約 70 km。南極には太陽が一度も当たらないクレーターがあり、そこに氷が残っている。', pin: 'reiner' },
-  { at: 0.88, title: '地球のぼり', body: '月から見る地球は、地球から見る月の 3.7 倍の大きさ。そして月面からは、地球はいつも空の同じ場所に止まって見える。', pin: 'earthrise' },
+  { at: 0.53, title: '地球のぼり', body: '月の裏側をまわると、地平線から地球がのぼる。月から見る地球は、地球から見る月の 3.7 倍。月面からは、地球はいつも空の同じ場所に止まって見える。' },
   { at: 0.96, title: '重力は 1/6', body: '1.62 m/s² — 地球の 1/6。同じ力でジャンプすれば 6 倍とべる。逃げ出すのに必要な速さは 2.38 km/s。', draw: drawGrav },
 ];
 const PINS = {
@@ -727,6 +733,8 @@ const pinTmp = new THREE.Vector3(), pinTmp2 = new THREE.Vector3();
 const orbitLamp = new THREE.DirectionalLight(0xc6d6ea, 1.7); orbitLamp.visible = false;
 orbitLamp.target.position.copy(MOON_POS); scene.add(orbitLamp, orbitLamp.target);
 const factEl = $('fact');
+TOUR.sort((a, b) => a.at - b.at);
+let erise = 0, eriseSeen = false;
 const showFact = f => {
   factOpen = true;
   factEl.querySelector('h3').textContent = f.title;
@@ -748,6 +756,24 @@ const startOrbit = () => {
   $('jhud').style.display = 'none'; $('map').style.display = 'none'; $('ohud').style.display = 'block'; $('hideShip').style.display = 'block';
   yaw = 0; pitch = -0.01;
 };
+
+// ---------- sound: synthesized, starts on the first click ----------
+let AC = null, engGain = null, master = null, engTarget = 0, muted = false;
+const sndInit = () => {
+  if (AC) { AC.resume(); return; }
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  master = AC.createGain(); master.gain.value = muted ? 0 : 1; master.connect(AC.destination);
+  const buf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate), d = buf.getChannelData(0);   // brown noise = engine rumble
+  let l = 0; for (let i = 0; i < d.length; i++) { l = (l + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = l * 3.5; }
+  const src = AC.createBufferSource(); src.buffer = buf; src.loop = true;
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180;
+  engGain = AC.createGain(); engGain.gain.value = 0; src.connect(lp).connect(engGain).connect(master); src.start();
+};
+const beep = (f = 880, dur = 0.12, g = 0.2) => { if (!AC) return; const o = AC.createOscillator(), gn = AC.createGain(); o.frequency.value = f; gn.gain.value = g;
+  o.connect(gn).connect(master); o.start(); gn.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + dur); o.stop(AC.currentTime + dur); };
+const thud = (g = 0.6) => { if (!AC) return; const o = AC.createOscillator(), gn = AC.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(90, AC.currentTime); o.frequency.exponentialRampToValueAtTime(30, AC.currentTime + 0.35);
+  gn.gain.value = g; o.connect(gn).connect(master); o.start(); gn.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + 0.4); o.stop(AC.currentTime + 0.4); };
+$('mute').onclick = () => { muted = !muted; $('mute').textContent = muted ? '🔇' : '🔊'; if (master) master.gain.value = muted ? 0 : 1; };
 
 // ---------- mission: Apollo-style powered descent ----------
 // Physics runs in real SI units. Two render frames are stitched together at the 2.3 km gate:
@@ -820,7 +846,7 @@ const startDescent = hard => {
   scene.fog.near = 1e6; scene.fog.far = 2e6; dust.material.opacity = 0;
   if (target) target.visible = false;
   yaw = 0; pitch = 0;
-  $('dhud').style.display = 'block'; $('pad').style.display = 'grid';
+  $('dhud').style.display = 'block'; $('pad').style.display = 'grid'; $('mute').style.display = 'block';
   $('ohud').style.display = $('hideShip').style.display = $('jhud').style.display = $('map').style.display = 'none';
 };
 
@@ -867,7 +893,7 @@ const touchdown = () => {
   D.crash = v > 3.5 || rockD < 6;                                           // the gear was good for ~3 m/s; a footpad on a rock tips you
   if (D.crash || off > 60) landStars = 0;
   tipQ.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dUp.copy(landN).applyAxisAngle(east, 1.25));
-  state.landing = { v, off, rockD, fuel };
+  state.landing = { v, off, rockD, fuel }; thud(D.crash ? 1 : 0.5); $('mute').style.display = 'none'; engTarget = 0;
   showCap(D.crash ? '横倒し…' : '着陸！', D.crash ? '脚が折れた。もう一度' : '「鷲は舞い降りた」— アポロ11号、1969年7月20日', 5000);
   state.stars += landStars;
   $('dhud').style.display = 'none'; $('pad').style.display = 'none'; target.visible = false;
@@ -921,8 +947,8 @@ const buildTerrain = () => {                                     // 170×170 u c
   shadow.position.copy(landPt).addScaledVector(landN, 0.05); shadow.quaternion.copy(terrain.quaternion); scene.add(shadow); terrain.userData.shadow = shadow;
 };
 $('retry').onclick = () => show('s-mode');
-$('modeEasy').onclick = () => { show(null); startDescent(false); };
-$('modeReal').onclick = () => { show(null); startDescent(true); };
+$('modeEasy').onclick = () => { sndInit(); show(null); startDescent(false); };
+$('modeReal').onclick = () => { sndInit(); show(null); startDescent(true); };
 // ---------- moonwalk: first person on the surface, real metres, 1/6 g ----------
 // ponytail: the ground is flat around the pad (terrain noise is faded out there), so no raycasting
 const WALK_EYE = 1.7, WALK_V = 1.6, JUMP_V = 3.0;                           // m, m/s — a 3 m/s push-off is a 0.5 m hop on Earth
@@ -952,14 +978,32 @@ const startWalk = () => {
   rig.position.copy(Wk.p).addScaledVector(landN, WALK_EYE / MPU);
   aimUp(tmp.copy(lm.position).addScaledVector(landN, 0.04), landN); yaw = 0; pitch = 0; lookOn = true;
   camera.near = 0.004; camera.updateProjectionMatrix();                      // eyes 1.7 m up: the default near plane would clip the ground
+  dust.material.size = 0.004;
   $('lhud').style.display = 'block'; $('wpad').style.display = 'flex'; $('shot').style.display = 'block'; $('hint').style.display = 'none'; $('pad').style.display = 'none';
   const sh = terrain.userData.shadow; sh.position.copy(lm.position).addScaledVector(landN, 0.002); sh.scale.setScalar(0.22); sh.material.opacity = 0.45;
   showCap('月面に出た', '上を見てみよう — 地球が見える 🌍', 5000);
 };
-const endWalk = () => { camera.near = 0.05; camera.updateProjectionMatrix(); lookOn = false; if (flag) flag.visible = false;
+const endWalk = () => { dust.material.size = 0.03; camera.near = 0.05; camera.updateProjectionMatrix(); lookOn = false; if (flag) flag.visible = false;
   $('lhud').style.display = 'none'; $('wpad').style.display = 'none'; $('shot').style.display = 'none'; $('cap').style.opacity = 0; };
 $('walk').onclick = startWalk;
-const goHome = () => { if (phase === 'walk') endWalk(); fade(1, () => { phase = 'home'; pt = 0; lm.visible = false; dust.material.opacity = 0; cockpit.visible = true; lookOn = true; show(null); $('jhud').style.display = 'block'; fade(0); }); };
+const lmGround = () => {                                                    // the real 7 m lander, where it touched down
+  lm.scale.setScalar(0.075); lm.position.copy(landPt).addScaledVector(landN, GROUND).addScaledVector(north, D.s / MPU).addScaledVector(east, D.x / MPU);
+  lm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), landN);
+};
+let ascLit = false;
+const ASC_T0 = 3.5, ASC_A = 3.4;                                            // ignition after the countdown; LM ascent stage ≈ 3.4 m/s² at liftoff
+const startAscent = () => {
+  phase = 'ascent'; pt = 0; ascLit = false; show(null); sndInit(); engTarget = 0; dust.material.size = 0.004;
+  lmGround(); ascent.position.y = 0; lm.visible = true; if (flag) flag.visible = true;
+  rig.position.copy(lm.position).addScaledVector(north, 0.20).addScaledVector(east, 0.15).addScaledVector(landN, WALK_EYE / MPU);
+  camera.near = 0.004; camera.updateProjectionMatrix(); lookOn = false; cockpit.visible = false;
+  $('lhud').style.display = $('wpad').style.display = $('shot').style.display = $('pad').style.display = 'none'; $('mute').style.display = 'block';
+  showCap('上昇準備', '降下段を足場にして、上の段だけが飛び立つ', 3200);
+};
+const goHome = () => { if (phase === 'walk') endWalk(); startAscent(); };
+const endAscent = () => { fade(1, () => { phase = 'home'; pt = 0; lm.visible = false; lmFlame.visible = false; ascent.position.y = 0; dust.material.opacity = 0; dust.material.size = 0.03;
+  camera.near = 0.05; camera.updateProjectionMatrix(); $('mute').style.display = 'none'; if (flag) flag.visible = false;
+  cockpit.visible = true; lookOn = true; show(null); $('jhud').style.display = 'block'; fade(0); }); phase = 'wait'; };
 $('goHome').onclick = goHome; $('endWalk').onclick = goHome;
 
 // ---------- landing certificate ----------
@@ -1061,7 +1105,13 @@ function animate() {
     if (!factOpen) orbitT += dt / ORBIT_S;                       // the tour pauses while a card is up
     const u = Math.min(orbitT, 0.999);
     rig.position.copy(orbitCurve.getPointAt(u));
-    aim(MOON_POS.x, MOON_POS.y, MOON_POS.z); camera.rotation.set(-pitch, -yaw, 0, 'YXZ');
+    erise += (((orbitT > 0.47 && orbitT < 0.64) ? 1 : 0) - erise) * Math.min(1, dt * 1.2);   // Earthrise: swing toward the limb as Earth clears it
+    if (erise > 0.002) {
+      if (!eriseSeen) { eriseSeen = true; showCap('地球のぼり', 'Earthrise — 1968年、アポロ8号の乗組員が初めて見た', 5000); }
+      dTmp.copy(MOON_POS).sub(rig.position).normalize(); dTmp2.copy(rig.position).negate().normalize();
+      dTmp.lerp(dTmp2, 0.6 * erise).normalize(); tmp.copy(rig.position).addScaledVector(dTmp, 1000); aim(tmp.x, tmp.y, tmp.z);
+    } else aim(MOON_POS.x, MOON_POS.y, MOON_POS.z);
+    camera.rotation.set(-pitch, -yaw, 0, 'YXZ');
     orbitLamp.position.copy(rig.position);
     for (const k in PINS) { const pm = PINS[k].mesh;                      // hide pins on the far side of the globe
       pinTmp.copy(pm.position).sub(MOON_POS).normalize();
@@ -1119,8 +1169,8 @@ function animate() {
           mother.visible = false;
         }
       } else if (st === 'brake' || st === 'final') {
-        if (st === 'final' && !D.contact && D.alt <= PROBE) { D.contact = true; D.vContact = D.vy; showCap('接地ランプ', 'エンジン停止'); }
-        if (st === 'final' && callIdx < CALLS.length && D.alt < CALLS[callIdx][0]) { const c = CALLS[callIdx++]; showCap(c[1], c[2]); }
+        if (st === 'final' && !D.contact && D.alt <= PROBE) { D.contact = true; D.vContact = D.vy; showCap('接地ランプ', 'エンジン停止'); beep(1400, 0.7, 0.3); }
+        if (st === 'final' && callIdx < CALLS.length && D.alt < CALLS[callIdx][0]) { const c = CALLS[callIdx++]; showCap(c[1], c[2]); beep(700, 0.07, 0.1); }
         if (D.contact) D.thr = 0;                                            // probe touched: engine stop, the last 1.7 m is a drop
         const a = THRUST_N / (LM_DRY + D.prop) * (D.prop > 0 ? D.thr : 0);
         D.vy += (a * Math.cos(D.pitch) - G_MOON) * sdt;
@@ -1168,6 +1218,7 @@ function animate() {
         orbitLamp.intensity = 1.7 * THREE.MathUtils.clamp(D.alt / 60000, 0, 1); // the orbit-tour fill blows out the surface up close
       }
       flame.visible = false;
+      engTarget = (st === 'brake' || st === 'final') ? D.thr * 0.6 : st === 'doiburn' ? 0.45 : 0;
       // ---- HUD
       const fuel = D.prop / LM_PROP * 100;
       let h = D.ts > 1 ? `<span class="ts">⏩ ×${D.ts}</span><br>` : '';
@@ -1212,6 +1263,23 @@ function animate() {
     if (k >= 1 && pt < T + 0.4) rig.position.y += (Math.random() - .5) * 0.05;   // touchdown shake
     if (pt > T + 2.5) { phase = 'landed'; $('landStars').textContent = stars(); show('s-land'); }
   }
+  if (phase === 'ascent') {
+    const t = pt - ASC_T0;
+    if (t >= 0) {
+      if (!ascLit) { ascLit = true; lmFlame.visible = true; showCap('発射！', '上昇段だけが月を離れる — 降下段は今も月面に残っている', 4000); thud(0.8);
+        dust.material.opacity = 0.9; for (let i = 0; i < dustN; i++) { const a = Math.random() * Math.PI * 2;
+          dustVel[i].crossVectors(landN, new THREE.Vector3(Math.cos(a), 0, Math.sin(a))).normalize().multiplyScalar(0.05 + Math.random() * 0.12).addScaledVector(landN, Math.random() * 0.03);
+          dustArr.set([lm.position.x, lm.position.y, lm.position.z], i * 3); } }
+      ascent.position.y = 0.5 * ASC_A * t * t / MPU / lm.scale.x;
+      lmFlame.scale.set(0.12 + Math.random() * 0.05, 0.3 + Math.random() * 0.12, 1);
+      engTarget = 0.7;
+    } else if (Math.floor(ASC_T0 - pt) !== Math.floor(ASC_T0 - pt + dt)) beep(600, 0.1, 0.15);   // countdown ticks
+    ascent.getWorldPosition(tmp); tmp.addScaledVector(landN, 0.02); aimUp(tmp, landN); camera.rotation.set(0, 0, 0);
+    if (t > 0 && t < 0.5) rig.position.addScaledVector(east, (Math.random() - .5) * 0.002);
+    if (dust.material.opacity > 0) { for (let i = 0; i < dustN; i++) { dustArr[i * 3] += dustVel[i].x * dt; dustArr[i * 3 + 1] += dustVel[i].y * dt; dustArr[i * 3 + 2] += dustVel[i].z * dt; dustVel[i].addScaledVector(landN, -0.016 * dt); }
+      dustGeo.attributes.position.needsUpdate = true; dust.material.opacity = Math.max(0, dust.material.opacity - dt * 0.3); }
+    if (t > 8) endAscent();
+  }
   if (phase === 'walk') {
     const turn = (keyDown.TurnR ? 1 : 0) - (keyDown.TurnL ? 1 : 0); yaw += turn * 1.4 * dt;
     const mv = (keyDown.Fwd ? 1 : 0) - (keyDown.Back ? 1 : 0);
@@ -1230,6 +1298,7 @@ function animate() {
     const r = lm.scale.x * 2.6;
     rig.position.copy(lm.position).addScaledVector(landN, r * 0.45).add(tmp.crossVectors(landN, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(r * (1 + 0.18 * Math.sin(pt * .3)))); aimUp(lm.position, landN); camera.rotation.set(0, 0, 0); }
 
+  if (engGain) { engGain.gain.value += (engTarget - engGain.gain.value) * Math.min(1, dt * 6); if (phase !== 'descent' && phase !== 'ascent') engTarget = 0; }
   renderer.render(scene, camera);
   if (wantShot) { wantShot = false; const a = document.createElement('a');   // the buffer must be read in the same frame it was drawn
     a.download = phase === 'walk' ? 'moon.png' : 'earth.png'; a.href = renderer.domElement.toDataURL('image/png'); a.click(); }
