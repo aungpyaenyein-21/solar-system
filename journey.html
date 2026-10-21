@@ -77,6 +77,18 @@
   #pad button.on { background:#2f6d99; }
   #dhud .dir { color:#7fd4ff; } #dhud .ts { color:#ffcc33; }
   body.clean #dhud, body.clean #pad { display:none !important; }
+  #wpad { position:fixed; right:14px; bottom:14px; z-index:6; display:none; gap:8px; }
+  #wpad button { font-size:15px; padding:12px 16px; border-radius:12px; background:#242a44cc; color:#fff; border:1px solid #3a4370; }
+  #wpad button.jump { background:#7a3b1acc; border-color:#c4642a; }
+  .cert { width:640px; background:#fffdf5; color:#222; border:6px double #b08d2a; padding:28px 36px; text-align:center; font-family:"Hiragino Mincho ProN","Yu Mincho",serif; page-break-inside:avoid; page-break-after:always; position:relative; }
+  .cert .en { font-size:12px; letter-spacing:5px; color:#8a6d1e; }
+  .cert h2 { font-size:30px; margin:6px 0 14px; color:#1b2a6b; letter-spacing:4px; }
+  .cert .who { font-size:34px; font-weight:bold; margin:10px 0 4px; border-bottom:2px solid #1b2a6b; display:inline-block; padding:0 24px 4px; }
+  .cert p { font-size:15px; line-height:1.9; margin:10px 0; }
+  .cert table { margin:12px auto; border-collapse:collapse; font-size:14px; }
+  .cert td { padding:4px 16px; border-bottom:1px solid #e3d9b8; } .cert td:first-child { color:#666; text-align:right; }
+  .cert .seal { position:absolute; right:30px; bottom:28px; width:82px; height:82px; border-radius:50%; border:3px solid #c0392b; color:#c0392b; display:flex; align-items:center; justify-content:center; font-size:13px; line-height:1.3; transform:rotate(-12deg); opacity:.85; }
+  .cert .sig { margin-top:16px; font-size:12px; letter-spacing:3px; color:#555; }
   #ohud b { color:var(--acc); }
   #hideShip { position:fixed; right:14px; top:120px; z-index:6; display:none; font-size:13px; padding:7px 14px; background:#242a44; color:#fff; border-color:#3a4370; }
   body.clean #hideShip { display:none !important; }
@@ -174,11 +186,11 @@
     <li>昼は 110℃、夜は −170℃ — 空気がないから</li>
     <li>1969年、アポロ11号で人間がはじめて歩いた</li>
   </ul>
-  <div class="row"><button class="big" id="goHome">地球へ帰還</button></div>
+  <div class="row"><button class="big" id="walk">月面に出る 👣</button><button class="sec" id="goHome">地球へ帰還</button></div>
 </div></div></div>
 <div class="screen" id="s-done"><div class="center"><div class="card" style="text-align:center">
   <h1>ミッション完了 — 地球に帰還</h1><div class="stars" id="doneStars"></div>
-  <p id="doneMsg"></p><div class="row"><button class="big" id="again">次の目的地：火星（準備中）</button><button class="sec" id="restart">最初から</button></div>
+  <p id="doneMsg"></p><div class="row"><button class="sec" id="cert">🏅 着陸証明書を印刷</button><button class="big" id="again">次の目的地：火星（準備中）</button><button class="sec" id="restart">最初から</button></div>
 </div></div></div>
 
 <div class="hud" id="count"></div>
@@ -189,6 +201,7 @@
 <div class="hud" id="ohud"></div>
 <button id="hideShip">🚀 機体を消す</button>
 <div class="hud" id="dhud"></div>
+<div id="wpad"><button data-w="Fwd">↑ 歩く</button><button data-w="Jump" class="jump">⤴ ジャンプ</button><button id="endWalk">着陸船にもどる</button></div>
 <div id="pad">
   <button data-k="ThrUp" class="thr">🔥▲</button><button data-k="PitUp">機首▲</button><button data-k="Left">◀</button>
   <button data-k="ThrDn" class="thr">🔥▼</button><button data-k="PitDn">機首▼</button><button data-k="Right">▶</button>
@@ -605,7 +618,7 @@ const skipToCockpit = () => { stopCam(); show(null); flame.visible = false; trai
 $('skipTicket').disabled = !assetsReady;
 $('skipTicket').onclick = skipToCockpit;
 $('skip').onclick = skipToCockpit;
-window.__go = { descent: hard => { show(null); startDescent(hard !== false); }, final: o => { if (phase !== 'descent') { show(null); startDescent(!!(o && o.hard)); } startFinal(); Object.assign(D, { prop: 2000 }, o || {}); }, depart: () => { show(null); startLaunch(); startDepart(); }, launch: t => { show(null); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); startCockpit(); }, orbit: u => { show(null); startCockpit(); startOrbit(); orbitT = u || 0; tourIdx = TOUR.findIndex(f => f.at > (u || 0)); if (tourIdx < 0) tourIdx = TOUR.length; }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
+window.__go = { walk: () => { if (phase !== 'descent') { show(null); startDescent(false); startFinal(); } Object.assign(D, { alt: 0, s: 2, x: 1, done: true }); lmPos(lm.position); phase = 'landed'; startWalk(); }, descent: hard => { show(null); startDescent(hard !== false); }, final: o => { if (phase !== 'descent') { show(null); startDescent(!!(o && o.hard)); } startFinal(); Object.assign(D, { prop: 2000 }, o || {}); }, depart: () => { show(null); startLaunch(); startDepart(); }, launch: t => { show(null); startLaunch(); phase = 'launch'; pt = t; $('count').style.display = 'none'; }, cockpit: () => { show(null); startCockpit(); }, orbit: u => { show(null); startCockpit(); startOrbit(); orbitT = u || 0; tourIdx = TOUR.findIndex(f => f.at > (u || 0)); if (tourIdx < 0) tourIdx = TOUR.length; }, land: () => { show(null); startLanding(); }, t: v => { journeyT = v; } };
 
 // quizzes (mission stamps)
 // asked on the way home, about what the tour actually showed
@@ -757,8 +770,13 @@ let target = null, landStars = 0, landMax = 3, rocks = null, doiStar = 0, gateSt
 const tipQ = new THREE.Quaternion();
 const keyDown = {};
 const KEYMAP = { ArrowUp: 'ThrUp', ArrowDown: 'ThrDn', ArrowLeft: 'PitUp', ArrowRight: 'PitDn', KeyA: 'Left', KeyD: 'Right', Space: 'Fire' };
-addEventListener('keydown', e => { const k = KEYMAP[e.code]; if (phase === 'descent' && k) { keyDown[k] = true; e.preventDefault(); } });
-addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keyDown[k] = false; });
+const WALKMAP = { ArrowUp: 'Fwd', KeyW: 'Fwd', ArrowDown: 'Back', KeyS: 'Back', ArrowLeft: 'TurnL', KeyA: 'TurnL', ArrowRight: 'TurnR', KeyD: 'TurnR', Space: 'Jump' };
+addEventListener('keydown', e => { const k = phase === 'walk' ? WALKMAP[e.code] : phase === 'descent' ? KEYMAP[e.code] : null; if (k) { keyDown[k] = true; e.preventDefault(); } });
+addEventListener('keyup', e => { const k = KEYMAP[e.code] || WALKMAP[e.code]; if (k) keyDown[k] = false; });
+for (const b of $('wpad').querySelectorAll('button[data-w]')) {
+  const k = b.dataset.w, on = e => { e.preventDefault(); keyDown[k] = true; }, off = e => { e.preventDefault(); keyDown[k] = false; };
+  b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointerleave', off);
+}
 for (const b of $('pad').querySelectorAll('button[data-k]')) {                 // touch controls mirror the keys
   const k = b.dataset.k;
   const on = e => { e.preventDefault(); keyDown[k] = true; }, off = e => { e.preventDefault(); keyDown[k] = false; };
@@ -809,7 +827,7 @@ const startDescent = hard => {
 const startFinal = () => {                   // hand over from the sphere frame to the flat patch
   D.stage = 'final'; D.ts = 1;
   D.s = THREE.MathUtils.clamp(D.s, 400, 9000); D.x = 250; D.vx = 0;
-  D.contact = false; D.crash = false; D.rod = 0; lm.scale.setScalar(0.3);   // ponytail: 30 m LM, 4× real, same exaggeration as the 40 m ring
+  D.contact = false; D.crash = false; D.rod = 0; lm.scale.setScalar(0.3); callIdx = 0;   // ponytail: 30 m LM, 4× real, same exaggeration as the 40 m ring
   if (!terrain) buildTerrain();
   if (!rocks) buildRocks();
   if (!target) {
@@ -831,7 +849,15 @@ const buildRocks = () => {                   // Armstrong's boulder field: why h
   }
 };
 
-const lmPos = (out) => out.copy(landPt).addScaledVector(landN, D.alt / MPU).addScaledVector(north, D.s / MPU).addScaledVector(east, D.x / MPU);
+const GROUND = 0.03;                                                        // the terrain patch floats this far above landPt
+const lmPos = (out) => out.copy(landPt).addScaledVector(landN, GROUND + D.alt / MPU).addScaledVector(north, D.s / MPU).addScaledVector(east, D.x / MPU);
+
+// Apollo-style callouts on the way down
+const CALLS = [[2000, '高度 2,000 m', '着陸地点が見えてきた'], [1000, '1,000 m', '前に進みながら、ゆっくり下りる'], [500, '500 m', '岩のひとつひとつが見える'],
+               [LOW_ALT, '低高度ゲート 150 m', '機体を立てて、ここからは手で降ろす — アポロの船長と同じ'], [60, '60 m', 'エンジンの風で砂が舞いはじめる']];
+let callIdx = 0, capTimer = 0;
+const showCap = (t, sub, ms = 3600) => { $('cap').innerHTML = `<b>${t}</b><span>${sub}</span>`; $('cap').style.display = 'block'; $('cap').style.opacity = 1;
+  clearTimeout(capTimer); capTimer = setTimeout(() => $('cap').style.opacity = 0, ms); };
 
 const touchdown = () => {
   D.done = true;
@@ -841,6 +867,8 @@ const touchdown = () => {
   D.crash = v > 3.5 || rockD < 6;                                           // the gear was good for ~3 m/s; a footpad on a rock tips you
   if (D.crash || off > 60) landStars = 0;
   tipQ.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dUp.copy(landN).applyAxisAngle(east, 1.25));
+  state.landing = { v, off, rockD, fuel };
+  showCap(D.crash ? '横倒し…' : '着陸！', D.crash ? '脚が折れた。もう一度' : '「鷲は舞い降りた」— アポロ11号、1969年7月20日', 5000);
   state.stars += landStars;
   $('dhud').style.display = 'none'; $('pad').style.display = 'none'; target.visible = false;
   $('landStars').textContent = '⭐'.repeat(landStars) + '☆'.repeat(Math.max(0, landMax - landStars));
@@ -873,7 +901,7 @@ const buildTerrain = () => {                                     // 170×170 u c
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i); let h = 0;
     for (const [cx, cz, r, d] of craters) { const q = Math.hypot(x - cx, z - cz) / r; if (q < 1) h -= d * (1 - q * q) * (1 - q * q); const e = Math.exp(-((q - 1) * (q - 1)) / 0.02); h += d * 0.35 * e; }
-    h += (hash(Math.floor(x * 2), Math.floor(z * 2)) - .5) * 0.05 + (hash(Math.floor(x * 9), Math.floor(z * 9)) - .5) * 0.012;
+    h += ((hash(Math.floor(x * 2), Math.floor(z * 2)) - .5) * 0.05 + (hash(Math.floor(x * 9), Math.floor(z * 9)) - .5) * 0.012) * THREE.MathUtils.smoothstep(Math.hypot(x, z), 0.8, 3);   // flat around the pad for the moonwalk
     const d = Math.hypot(x, z), edge = THREE.MathUtils.smoothstep(d, 70, 84); h *= 1 - edge;
     pos.setY(i, h - d * d / (2 * R_M));                                              // follow the Moon's curvature so the rim meets the sphere
   }
@@ -895,7 +923,58 @@ const buildTerrain = () => {                                     // 170×170 u c
 $('retry').onclick = () => show('s-mode');
 $('modeEasy').onclick = () => { show(null); startDescent(false); };
 $('modeReal').onclick = () => { show(null); startDescent(true); };
-$('goHome').onclick = () => { fade(1, () => { phase = 'home'; pt = 0; lm.visible = false; dust.material.opacity = 0; cockpit.visible = true; lookOn = true; show(null); $('jhud').style.display = 'block'; fade(0); }); };
+// ---------- moonwalk: first person on the surface, real metres, 1/6 g ----------
+// ponytail: the ground is flat around the pad (terrain noise is faded out there), so no raycasting
+const WALK_EYE = 1.7, WALK_V = 1.6, JUMP_V = 3.0;                           // m, m/s — a 3 m/s push-off is a 0.5 m hop on Earth
+const Wk = { p: new THREE.Vector3(), h: 0, vh: 0, apex: 0, best: 0, jumps: 0 };
+let flag = null;
+const buildFlag = () => {                                                   // crew flag: pole, crossbar, a canvas with the names
+  flag = new THREE.Group();
+  const m = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.5, roughness: 0.4 });
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.0003, 0.0003, 0.022, 8), m); pole.position.y = 0.011;
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.0002, 0.0002, 0.015, 8), m); bar.rotation.z = Math.PI / 2; bar.position.set(0.0075, 0.021, 0);
+  const c = document.createElement('canvas'); c.width = 512; c.height = 320; const g = c.getContext('2d');
+  g.fillStyle = '#1b2a6b'; g.fillRect(0, 0, 512, 320); g.fillStyle = '#e6b84a'; g.fillRect(0, 0, 512, 46);
+  g.fillStyle = '#fff'; g.font = 'bold 30px sans-serif'; g.textAlign = 'center'; g.fillText('SPACE JOURNEY · MOON', 256, 34);
+  g.font = 'bold 40px sans-serif'; const names = Array.from({ length: state.pax }, (_, i) => state.names[i] || `うちゅうひこうし ${i + 1}`);
+  names.slice(0, 4).forEach((n, i) => g.fillText(n, 256, 120 + i * 50)); g.font = '22px sans-serif'; g.fillText(today, 256, 300);
+  const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.015, 0.0094), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), side: THREE.DoubleSide }));
+  cloth.position.set(0.0078, 0.0162, 0); flag.add(pole, bar, cloth);
+  flag.position.copy(landPt).addScaledVector(landN, GROUND).addScaledVector(east, 0.09).addScaledVector(north, 0.03);
+  flag.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), landN); scene.add(flag);
+};
+const startWalk = () => {
+  phase = 'walk'; pt = 0; show(null);
+  if (!flag) buildFlag(); flag.visible = true;
+  lm.scale.setScalar(0.075); lm.position.copy(landPt).addScaledVector(landN, GROUND).addScaledVector(north, D.s / MPU).addScaledVector(east, D.x / MPU);   // real 7 m LM, where it landed
+  lm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), landN);
+  Wk.p.copy(lm.position).addScaledVector(north, 0.12).addScaledVector(east, -0.05); Wk.h = Wk.vh = Wk.apex = Wk.best = 0; Wk.jumps = 0;
+  rig.position.copy(Wk.p).addScaledVector(landN, WALK_EYE / MPU);
+  aimUp(tmp.copy(lm.position).addScaledVector(landN, 0.04), landN); yaw = 0; pitch = 0; lookOn = true;
+  camera.near = 0.004; camera.updateProjectionMatrix();                      // eyes 1.7 m up: the default near plane would clip the ground
+  $('lhud').style.display = 'block'; $('wpad').style.display = 'flex'; $('shot').style.display = 'block'; $('hint').style.display = 'none'; $('pad').style.display = 'none';
+  const sh = terrain.userData.shadow; sh.position.copy(lm.position).addScaledVector(landN, 0.002); sh.scale.setScalar(0.22); sh.material.opacity = 0.45;
+  showCap('月面に出た', '上を見てみよう — 地球が見える 🌍', 5000);
+};
+const endWalk = () => { camera.near = 0.05; camera.updateProjectionMatrix(); lookOn = false; if (flag) flag.visible = false;
+  $('lhud').style.display = 'none'; $('wpad').style.display = 'none'; $('shot').style.display = 'none'; $('cap').style.opacity = 0; };
+$('walk').onclick = startWalk;
+const goHome = () => { if (phase === 'walk') endWalk(); fade(1, () => { phase = 'home'; pt = 0; lm.visible = false; dust.material.opacity = 0; cockpit.visible = true; lookOn = true; show(null); $('jhud').style.display = 'block'; fade(0); }); };
+$('goHome').onclick = goHome; $('endWalk').onclick = goHome;
+
+// ---------- landing certificate ----------
+$('cert').onclick = () => {
+  const L = state.landing || { v: 0, off: 0, fuel: 0 };
+  $('print-area').innerHTML = Array.from({ length: state.pax }, (_, i) => `<div class="cert">
+    <div class="en">CERTIFICATE OF LUNAR LANDING</div><h2>月面着陸証明書</h2>
+    <div class="who">${state.names[i] || 'うちゅうひこうし ' + (i + 1)}</div>
+    <p>上記の者は ${today}、地球から 384,400 km の旅をして<br>月面に着陸し、ぶじに地球へ帰還したことを証明します。</p>
+    <table><tr><td>着陸速度</td><td>${L.v.toFixed(1)} m/s</td></tr><tr><td>目標からのきょり</td><td>${L.off.toFixed(0)} m</td></tr>
+    <tr><td>着陸ミッション</td><td>${'⭐'.repeat(landStars)}${'☆'.repeat(Math.max(0, landMax - landStars))}</td></tr>
+    <tr><td>クイズ</td><td>${quizRight} / ${QUIZ.length}</td></tr><tr><td>月面歩行</td><td>${Wk.jumps ? `ジャンプ最高 ${Wk.best.toFixed(1)} m` : '—'}</td></tr></table>
+    <div class="sig">SPACE JOURNEY MISSION CONTROL</div><div class="seal">月面<br>着陸<br>認定</div></div>`).join('');
+  show('s-print'); setTimeout(() => { window.print(); show('s-done'); }, 60);
+};
 $('again').onclick = () => alert('火星はこれからつくります 🚧');
 $('restart').onclick = () => location.reload();
 
@@ -1040,7 +1119,8 @@ function animate() {
           mother.visible = false;
         }
       } else if (st === 'brake' || st === 'final') {
-        if (st === 'final' && !D.contact && D.alt <= PROBE) { D.contact = true; D.vContact = D.vy; }
+        if (st === 'final' && !D.contact && D.alt <= PROBE) { D.contact = true; D.vContact = D.vy; showCap('接地ランプ', 'エンジン停止'); }
+        if (st === 'final' && callIdx < CALLS.length && D.alt < CALLS[callIdx][0]) { const c = CALLS[callIdx++]; showCap(c[1], c[2]); }
         if (D.contact) D.thr = 0;                                            // probe touched: engine stop, the last 1.7 m is a drop
         const a = THRUST_N / (LM_DRY + D.prop) * (D.prop > 0 ? D.thr : 0);
         D.vy += (a * Math.cos(D.pitch) - G_MOON) * sdt;
@@ -1132,6 +1212,19 @@ function animate() {
     if (k >= 1 && pt < T + 0.4) rig.position.y += (Math.random() - .5) * 0.05;   // touchdown shake
     if (pt > T + 2.5) { phase = 'landed'; $('landStars').textContent = stars(); show('s-land'); }
   }
+  if (phase === 'walk') {
+    const turn = (keyDown.TurnR ? 1 : 0) - (keyDown.TurnL ? 1 : 0); yaw += turn * 1.4 * dt;
+    const mv = (keyDown.Fwd ? 1 : 0) - (keyDown.Back ? 1 : 0);
+    if (mv) { camera.getWorldDirection(tmp); tmp.addScaledVector(landN, -tmp.dot(landN)).normalize();
+      Wk.p.addScaledVector(tmp, mv * WALK_V / MPU * dt);
+      dTmp.copy(Wk.p).sub(landPt); const r = dTmp.length(); if (r > 1.6) Wk.p.copy(landPt).addScaledVector(dTmp, 1.6 / r);   // stay within 160 m of the pad
+      const dl = dTmp.copy(Wk.p).sub(lm.position).length(); if (dl < 0.045) Wk.p.copy(lm.position).addScaledVector(dTmp, 0.045 / dl); }
+    if (keyDown.Jump && Wk.h <= 0) { Wk.vh = JUMP_V; Wk.apex = 0; Wk.jumps++; }
+    if (Wk.h > 0 || Wk.vh > 0) { Wk.h += Wk.vh * dt; Wk.vh -= G_MOON * dt; Wk.apex = Math.max(Wk.apex, Wk.h); if (Wk.h <= 0) { Wk.h = 0; Wk.vh = 0; Wk.best = Math.max(Wk.best, Wk.apex); } }
+    rig.position.copy(Wk.p).addScaledVector(landN, (WALK_EYE + Wk.h) / MPU); camera.rotation.set(-pitch, -yaw, 0, 'YXZ');
+    $('lhud').innerHTML = `👣 月面を歩いています<br><span style="color:#9ab;font-size:13px">↑↓ 歩く　←→ / ドラッグ 見まわす　Space ジャンプ</span><br>` +
+      (Wk.h > 0 ? `ジャンプ中 <b>${Wk.h.toFixed(1)} m</b>` : Wk.jumps ? `ジャンプ <b>${Wk.apex.toFixed(1)} m</b>　<span style="color:#9ab">地球なら ${(Wk.apex / 6).toFixed(1)} m — 重力 1/6</span>` : `<span style="color:#9ab">ジャンプしてみよう — 地球の 6倍 高く飛べる</span>`);
+  }
   if (phase === 'landed') {
     if (D.crash) lm.quaternion.rotateTowards(tipQ, dt * 0.7);
     const r = lm.scale.x * 2.6;
@@ -1139,7 +1232,7 @@ function animate() {
 
   renderer.render(scene, camera);
   if (wantShot) { wantShot = false; const a = document.createElement('a');   // the buffer must be read in the same frame it was drawn
-    a.download = 'earth.png'; a.href = renderer.domElement.toDataURL('image/png'); a.click(); }
+    a.download = phase === 'walk' ? 'moon.png' : 'earth.png'; a.href = renderer.domElement.toDataURL('image/png'); a.click(); }
   labelR.render(scene, camera);
   requestAnimationFrame(animate);
 }
